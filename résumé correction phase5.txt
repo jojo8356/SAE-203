@@ -1,0 +1,140 @@
+================================================================================
+  RESUME CORRECTION PHASE 5 - PHP & APPLICATION CARTE GRISE
+  SAE 203 - IUT de Nice
+================================================================================
+
+
+PROBLEME 1 : Faux negatif "Module Apache PHP PAS actif" dans le script de test
+--------------------------------------------------------------------------------
+Cause   : Le script test_phase5_SERVER.sh utilisait "sudo a2query -m php*"
+          avec un wildcard qui ne matchait pas le nom exact du module "php7.4".
+
+Diagnostic :
+  sudo a2query -m | grep php
+  -> php7.4 (enabled by maintainer script)
+
+Solution: Corrige dans le script :
+  Avant : if sudo a2query -m php* &>/dev/null; then
+  Apres : if sudo a2query -m 2>/dev/null | grep -q "php"; then
+
+Impact : Aucun. PHP fonctionnait correctement, c'etait uniquement un bug
+         dans le script de verification. Toutes les pages PHP repondaient
+         deja en HTTP 200.
+
+
+AUCUN AUTRE PROBLEME DETECTE
+--------------------------------------------------------------------------------
+L'application PHP carte grise etait deja fonctionnelle grace au script
+create_php.sh qui avait correctement deploye tous les fichiers.
+
+
+================================================================================
+  ETAT DE L'APPLICATION PHP
+================================================================================
+
+  Fichiers deployes dans /users/firms/exemple/www/ :
+
+  Fichier                      | Role                  | Operation SQL
+  -----------------------------|----------------------|------------------
+  db.php                       | Connexion BDD         | pg_connect()
+  style.php                    | Template HTML/CSS     | -
+  index.php                    | Tableau de bord       | SELECT (stats)
+  proprietaires.php            | Liste proprietaires   | SELECT
+  vehicules.php                | Liste vehicules       | SELECT + JOIN
+  ajouter_proprietaire.php     | Ajout proprietaire    | INSERT
+  ajouter_vehicule.php         | Ajout vehicule        | INSERT
+  modifier_proprietaire.php    | Modif proprietaire    | UPDATE
+  modifier_vehicule.php        | Modif vehicule        | UPDATE
+  supprimer.php                | Suppression generique | DELETE
+  upload.php                   | Upload documents      | UPDATE (path)
+  mail.php                     | Rappels mail + cron   | SELECT + INSERT
+  cron_mail.php                | Script cron auto      | SELECT + INSERT
+
+  Fonctionnalites CRUD :
+    CREATE : ajouter_proprietaire.php, ajouter_vehicule.php
+    READ   : index.php, proprietaires.php, vehicules.php
+    UPDATE : modifier_proprietaire.php, modifier_vehicule.php
+    DELETE : supprimer.php
+
+  Fonctionnalites supplementaires :
+    - Upload de documents (carte grise PDF/image)
+    - Recherche par nom/prenom/email/immatriculation
+    - Envoi de rappels mail (controle technique dans les 30 jours)
+    - Programmation cron (envoi automatique a 3h du matin)
+    - Historique des rappels envoyes
+    - Protection SQL injection (pg_query_params)
+    - Protection XSS (htmlspecialchars)
+
+
+================================================================================
+  SECURITE IMPLEMENTEE
+================================================================================
+
+  1. pg_query_params() : Requetes parametrees ($1, $2, $3...)
+     -> Protection contre les injections SQL
+
+  2. htmlspecialchars() : Echappement des caracteres HTML
+     -> Protection contre les attaques XSS
+
+  3. Verification d'extension pour l'upload :
+     -> Seuls pdf, jpg, jpeg, png, gif sont autorises
+
+  4. move_uploaded_file() : Fonction securisee de PHP
+     -> Empeche les attaques par traversal de repertoire
+
+  5. Renommage des fichiers uploades :
+     -> carte_grise_<id>_<timestamp>.<ext> (pas le nom original)
+
+
+================================================================================
+  CONFIGURATION
+================================================================================
+
+  PHP version     : 7.4.3
+  Module Apache   : php7.4
+  Module pgsql    : charge
+  upload_max_size : 10M
+  post_max_size   : 12M
+  Dossier uploads : /users/firms/exemple/www/uploads/
+  Cron mail       : 0 3 * * * php /users/firms/exemple/www/cron_mail.php
+
+
+================================================================================
+  TESTS FINAUX - RESULTATS
+================================================================================
+
+  Phase 5 SERVEUR :
+    - PHP installe (7.4.3) + modules pgsql et Apache
+    - Tous les fichiers PHP presents avec les bonnes operations SQL
+    - Tables avec colonnes correctes + cle etrangere
+    - Donnees de test presentes
+    - pg_connect() fonctionnel
+    - Dossier uploads/ present et accessible en ecriture
+    - Cron configure pour l'envoi automatique
+    - Toutes les pages repondent HTTP 200 sans erreur
+
+  Phase 5 CLIENT :
+    - index.php accessible HTTP et HTTPS
+    - PHP interprete correctement (pas de code source visible)
+    - Toutes les pages CRUD accessibles (200)
+    - Formulaires d'ajout fonctionnels (INSERT teste)
+    - Pages de modification et suppression accessibles
+    - Upload accessible avec champ file
+    - mail.php accessible
+    - Aucune erreur PHP/BDD sur les pages
+
+
+================================================================================
+  LECONS RETENUES
+================================================================================
+
+  1. Les wildcards bash (php*) ne fonctionnent pas toujours avec a2query.
+     Utiliser "a2query -m | grep php" pour une detection fiable.
+
+  2. PostgreSQL utilise "peer" par defaut pour l'auth locale. PHP peut
+     se connecter via pg_connect() tant que le script tourne sous le
+     bon utilisateur ou via le socket local.
+
+  3. L'application utilise pg_query_params() et non pg_query() avec
+     concatenation de variables, ce qui est la bonne pratique pour
+     eviter les injections SQL.

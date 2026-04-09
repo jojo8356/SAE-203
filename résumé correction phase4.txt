@@ -1,0 +1,69 @@
+================================================================================
+  RESUME CORRECTION PHASE 4 - SGBD (PostgreSQL)
+  SAE 203 - IUT de Nice
+================================================================================
+
+
+AUCUN PROBLEME MAJEUR DETECTE
+--------------------------------------------------------------------------------
+La phase 4 etait deja fonctionnelle grace au script install.sh et create_php.sh
+qui avaient correctement configure PostgreSQL.
+
+Etat constate :
+  - PostgreSQL installe et actif (port 5432)
+  - Utilisateur "exemple" cree avec mot de passe "but1"
+  - Base "carte_grise" creee avec les 3 tables :
+      * proprietaire (id, civilite, nom, prenom, email, adresse, telephone)
+      * vehicule (id, proprietaire_id, immatriculation, marque, modele, annee,
+                  date_mise_circulation, date_controle_technique, document_path)
+      * rappel_envoye (id, vehicule_id, date_envoi, type_rappel)
+  - Cle etrangere vehicule -> proprietaire avec ON DELETE CASCADE
+  - Donnees de test inserees (2 proprietaires, 2 vehicules)
+  - Droits accordes a l'utilisateur "exemple" sur toutes les tables
+  - phpPgAdmin installe et accessible via http://www.exemple.com/phppgadmin
+  - Connexion PHP (pg_connect) fonctionnelle
+
+
+POINT D'ATTENTION : pg_hba.conf
+--------------------------------------------------------------------------------
+Constat : L'authentification PostgreSQL utilise "peer" par defaut pour les
+          connexions locales. Cela signifie que seul l'utilisateur systeme
+          "exemple" peut se connecter sans mot de passe.
+
+          Pour PHP, la connexion fonctionne car pg_connect() utilise le socket
+          local. Si on voulait se connecter a distance (depuis le client),
+          il faudrait :
+          1. Modifier pg_hba.conf : changer "peer" en "md5"
+          2. Modifier postgresql.conf : listen_addresses = '*'
+          3. Redemarrer PostgreSQL
+
+          Pour notre projet, la connexion locale suffit (PHP tourne sur le
+          meme serveur que PostgreSQL).
+
+
+POINT D'ATTENTION : phpPgAdmin acces distant
+--------------------------------------------------------------------------------
+Constat : phpPgAdmin peut etre restreint a localhost ("Require local").
+          Le script config_server.sh corrige automatiquement ce point en
+          remplacant "Require local" par "Require all granted" pour
+          permettre l'acces depuis le client.
+
+
+================================================================================
+  TESTS FINAUX - RESULTATS
+================================================================================
+
+  Phase 4 SERVEUR : tous les tests essentiels OK
+    - PostgreSQL installe, actif, port 5432
+    - Utilisateur "exemple" existe
+    - Base "carte_grise" existe avec les 3 tables
+    - Colonnes correctes dans chaque table
+    - Donnees de test presentes
+    - Droits OK pour l'utilisateur "exemple"
+    - phpPgAdmin installe et accessible
+    - Connexion PHP pg_connect() fonctionnelle
+
+  Phase 4 CLIENT : tests OK
+    - phpPgAdmin accessible en HTTP et HTTPS
+    - Application PHP accessible et affiche du contenu
+    - Pas d'erreur de connexion BDD visible

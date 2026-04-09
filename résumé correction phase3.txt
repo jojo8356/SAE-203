@@ -1,0 +1,107 @@
+================================================================================
+  RESUME CORRECTION PHASE 3 - SERVICE DNS (BIND9)
+  SAE 203 - IUT de Nice
+================================================================================
+
+
+PROBLEME 1 : /etc/resolv.conf pointait vers 127.0.0.53 (systemd-resolved)
+--------------------------------------------------------------------------------
+Cause   : Ubuntu utilise par defaut systemd-resolved qui intercepte les
+          requetes DNS via un stub resolver local (127.0.0.53).
+          Notre serveur Bind9 (192.168.100.1) n'etait pas utilise.
+
+Solution:
+  echo "nameserver 192.168.100.1" | sudo tee /etc/resolv.conf
+
+  Pour rendre permanent (eviter que systemd-resolved ecrase le fichier) :
+  sudo systemctl disable systemd-resolved
+  sudo systemctl stop systemd-resolved
+  echo "nameserver 192.168.100.1" | sudo tee /etc/resolv.conf
+
+
+POINT D'ATTENTION : IPs dans les fichiers de zone DNS
+--------------------------------------------------------------------------------
+Constat : Les fichiers de zone (/etc/bind/db.exemple.com, db.exemple1.fr,
+          db.exemple2.eu) contiennent l'IP 10.0.2.15 (interface NAT) au lieu
+          de 192.168.100.1 (interface reseau interne).
+
+          Le DNS resout donc www.exemple.com -> 10.0.2.15
+          Mais /etc/hosts du client redirige vers 192.168.100.1
+
+          Ca fonctionne actuellement car /etc/hosts a priorite sur le DNS.
+          Cependant, pour une config propre, il faudrait mettre a jour les
+          fichiers de zone avec la bonne IP :
+
+          Sur le SERVEUR :
+          sudo sed -i 's/10.0.2.15/192.168.100.1/g' /etc/bind/db.exemple.com
+          sudo sed -i 's/10.0.2.15/192.168.100.1/g' /etc/bind/db.exemple1.fr
+          sudo sed -i 's/10.0.2.15/192.168.100.1/g' /etc/bind/db.exemple2.eu
+          sudo systemctl restart bind9
+
+          Apres cette correction, on pourrait supprimer la ligne dans
+          /etc/hosts du client car le DNS suffirait.
+
+
+ZONE INVERSE (PTR) : non configuree (optionnel)
+--------------------------------------------------------------------------------
+Constat : La resolution inverse (IP -> nom) n'est pas configuree.
+          Ce n'est pas bloquant mais c'est recommande pour le service mail
+          (certains serveurs mail verifient le PTR).
+
+          Pour la configurer sur le SERVEUR :
+
+          1. Ajouter dans /etc/bind/named.conf.local :
+             zone "100.168.192.in-addr.arpa" {
+                 type master;
+                 file "/etc/bind/db.192.168.100";
+             };
+
+          2. Creer /etc/bind/db.192.168.100 :
+             $TTL 604800
+             @ IN SOA ns1.exemple.com. admin.exemple.com. (1 604800 86400 2419200 604800)
+             @ IN NS  ns1.exemple.com.
+             1 IN PTR www.exemple.com.
+
+          3. sudo systemctl restart bind9
+
+
+================================================================================
+  TESTS FINAUX - RESULTATS
+================================================================================
+
+  Phase 3 SERVEUR : tous les tests OK
+    - bind9, bind9utils, dnsutils installes
+    - Bind9 actif et active au demarrage
+    - Port 53 en ecoute
+    - 3 fichiers de zone (exemple.com, exemple1.fr, exemple2.eu)
+    - Enregistrements SOA, NS, A, MX presents dans chaque zone
+    - 3 zones declarees dans named.conf.local
+    - named-checkconf : syntaxe OK
+    - named-checkzone : OK pour les 3 zones
+    - Resolution locale (dig @127.0.0.1) : OK pour les 3 domaines
+
+  Phase 3 CLIENT : 32/32 tests OK
+    - dnsutils et bind9-host installes
+    - resolv.conf pointe vers 192.168.100.1
+    - Port 53 accessible
+    - dig : A, MX, NS OK pour les 3 domaines
+    - nslookup : OK pour les 3 domaines
+    - host : OK pour les 3 domaines
+    - Resolution via resolv.conf (sans @serveur) : OK
+    - Acces web HTTP et HTTPS : 200 pour les 3 domaines
+
+
+================================================================================
+  LECONS RETENUES
+================================================================================
+
+  1. systemd-resolved intercepte les requetes DNS par defaut sur Ubuntu.
+     Il faut le desactiver ou modifier /etc/resolv.conf manuellement.
+
+  2. /etc/hosts a priorite sur le DNS. L'ordre de resolution est defini
+     dans /etc/nsswitch.conf (ligne "hosts: files dns").
+
+  3. Les IPs dans les fichiers de zone DNS doivent correspondre a l'IP
+     du reseau utilise pour la communication (reseau interne, pas NAT).
+
+  4. La zone inverse (PTR) est optionnelle mais recommandee pour le mail.

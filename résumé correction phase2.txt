@@ -1,0 +1,131 @@
+================================================================================
+  RESUME CORRECTION PHASE 2 - SERVICE WEB APACHE2
+  SAE 203 - IUT de Nice
+================================================================================
+
+
+PROBLEME 1 : Le client ne pouvait pas joindre www.exemple.com
+--------------------------------------------------------------------------------
+Cause   : /etc/hosts du client pointait vers 192.168.1.1 (IP incorrecte)
+          alors que le serveur etait sur 10.0.3.15 (IP NAT VirtualBox)
+Solution: Corriger /etc/hosts avec la bonne IP :
+          sudo sed -i '/exemple/d' /etc/hosts
+          echo "10.0.3.15 www.exemple.com www.exemple1.fr www.exemple2.eu" >> /etc/hosts
+
+
+PROBLEME 2 : Apache affichait la page par defaut Ubuntu au lieu du VirtualHost
+--------------------------------------------------------------------------------
+Cause   : Le site par defaut (000-default.conf) avait priorite sur les
+          VirtualHosts personnalises car il etait encore active.
+Solution: Desactiver le site par defaut :
+          sudo a2dissite 000-default.conf
+          sudo systemctl restart apache2
+Resultat: Apache sert maintenant /users/firms/exemple/www/index.html
+          ("Bienvenue sur www.exemple.com")
+
+
+PROBLEME 3 : HTTPS (port 443) inaccessible depuis le client
+--------------------------------------------------------------------------------
+Cause   : L'interface reseau interne "sae203" (enp0s3) n'avait PAS d'adresse
+          IP sur les deux VM. Les VM communiquaient via l'interface NAT
+          (enp0s8 / 10.0.3.15) qui redirige uniquement le port 80, pas le 443.
+
+Diagnostic effectue :
+  - Sur le serveur : ip addr show -> enp0s3 sans IP, enp0s8 = 10.0.3.15
+  - Sur le serveur : sudo ss -tlnp | grep :443 -> ecoute sur *:443 (OK)
+  - Sur le client  : nc -zv 10.0.3.15 80 -> OK (redirige par NAT)
+  - Sur le client  : nc -zv 10.0.3.15 443 -> Connection refused (pas redirige)
+  - sudo ufw status -> inactif (pas de firewall)
+
+Solution: Attribuer des IPs manuelles sur enp0s3 (reseau interne "sae203") :
+  SERVEUR : sudo ip addr add 192.168.100.1/24 dev enp0s3
+            sudo ip link set enp0s3 up
+  CLIENT  : sudo ip addr add 192.168.100.2/24 dev enp0s3
+            sudo ip link set enp0s3 up
+
+Puis mettre a jour /etc/hosts du client :
+  192.168.100.1  www.exemple.com www.exemple1.fr www.exemple2.eu
+
+Resultat: HTTP et HTTPS fonctionnent sur les 3 domaines via le reseau interne.
+
+
+PROBLEME 4 : www.exemple2.eu ne se resolvait pas (Could not resolve host)
+--------------------------------------------------------------------------------
+Cause   : Le copier-coller de la ligne /etc/hosts coupait la ligne sur 2 lignes
+          a cause du retour a la ligne dans le terminal. www.exemple2.eu se
+          retrouvait sur une ligne separee sans IP.
+Solution: Utiliser "echo ... | sudo tee -a /etc/hosts" pour ecrire en une
+          seule ligne :
+          echo "192.168.100.1  www.exemple.com www.exemple1.fr www.exemple2.eu" | sudo tee -a /etc/hosts
+
+
+PROBLEME 5 : Les IPs sur enp0s3 sont temporaires (perdues au reboot)
+--------------------------------------------------------------------------------
+Cause   : Les commandes "ip addr add" sont volatiles.
+Solution: Scripts de configuration permanente via netplan :
+  - server/definitively_IP_SERVER.sh  -> 192.168.100.1/24 sur enp0s3
+  - client/definitively_IP_CLIENT.sh  -> 192.168.100.2/24 sur enp0s3
+
+  Les scripts creent /etc/netplan/01-internal.yaml pour rendre la config
+  permanente au reboot.
+
+  Transfert des scripts via SCP :
+    scp -P 2222 server/definitively_IP_SERVER.sh exemple@127.0.0.1:~/
+    scp -P 2223 client/definitively_IP_CLIENT.sh exemple@127.0.0.1:~/
+
+  Execution :
+    SERVEUR : sudo bash ~/definitively_IP_SERVER.sh
+    CLIENT  : sudo bash ~/definitively_IP_CLIENT.sh
+
+
+================================================================================
+  CONFIGURATION RESEAU FINALE
+================================================================================
+
+  VirtualBox - Config reseau des 2 VM :
+    Adapter 1 : Reseau interne "sae203" (enp0s3) -> communication inter-VM
+    Adapter 2 : NAT (enp0s8) -> acces internet
+
+  IPs reseau interne (enp0s3) :
+    SERVEUR : 192.168.100.1/24
+    CLIENT  : 192.168.100.2/24
+
+  /etc/hosts du CLIENT :
+    192.168.100.1  www.exemple.com www.exemple1.fr www.exemple2.eu
+
+  Ports SSH (redirection NAT pour acces depuis l'hote) :
+    SERVEUR : port 2222 -> 127.0.0.1:2222
+    CLIENT  : port 2223 -> 127.0.0.1:2223
+
+
+================================================================================
+  TESTS FINAUX REUSSIS DEPUIS LE CLIENT
+================================================================================
+
+  curl http://www.exemple.com          -> OK (Bienvenue sur www.exemple.com)
+  curl http://www.exemple1.fr          -> OK
+  curl http://www.exemple2.eu          -> OK
+  curl -k https://www.exemple.com      -> OK
+  curl -k https://www.exemple1.fr      -> OK
+  curl -k https://www.exemple2.eu      -> OK
+
+
+================================================================================
+  LECONS RETENUES
+================================================================================
+
+  1. Toujours verifier l'IP reelle avec "hostname -I" (majuscule), pas
+     "hostname -i" (minuscule) qui donne 127.0.1.1.
+
+  2. En mode "Reseau interne" VirtualBox, il faut configurer les IPs
+     manuellement (pas de DHCP par defaut).
+
+  3. Le mode NAT redirige uniquement les ports explicitement configures
+     dans "Redirection de ports". Le reseau interne laisse tout passer.
+
+  4. Toujours desactiver 000-default.conf quand on utilise des VirtualHosts
+     personnalises pour eviter que la page par defaut soit servie.
+
+  5. Attention aux retours a la ligne dans les copier-coller terminal :
+     utiliser "echo ... | sudo tee -a" plutot que "sudo sh -c 'echo ...'"
+     pour les lignes longues.
