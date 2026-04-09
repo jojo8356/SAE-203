@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Fix terminal inconnu (xterm-kitty via SSH)
+case "$TERM" in
+    xterm-kitty|*-kitty) export TERM=xterm-256color ;;
+esac
+
 # =============================================================
 # config_server.sh - SAE S203 - Vérification & Configuration
 # Vérifie chaque service/config, corrige si nécessaire

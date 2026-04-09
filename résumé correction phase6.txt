@@ -1,0 +1,184 @@
+================================================================================
+  RESUME CORRECTION PHASE 6 - SERVICE MAIL (POSTFIX + DOVECOT + THUNDERBIRD)
+  SAE 203 - IUT de Nice
+================================================================================
+
+
+PROBLEME 1 : IMAP refuse le login en clair (disable_plaintext_auth=yes)
+--------------------------------------------------------------------------------
+Cause   : Dovecot refuse par defaut les connexions non chiffrees (sans SSL/TLS).
+          Comme notre serveur utilise un certificat auto-signe et que
+          Thunderbird est configure sans SSL (socketType=0), le login IMAP
+          echoue avec "PRIVACYREQUIRED".
+
+Diagnostic :
+  - Test depuis le client :
+    echo -e "a1 LOGIN exemple but1\na2 LOGOUT" | nc 192.168.100.1 143
+    -> Reponse contenant "PRIVACYREQUIRED"
+  - Sur le serveur :
+    doveconf -h disable_plaintext_auth
+    -> yes
+
+Solution (sur le SERVEUR) :
+  sudo sed -i 's/^#*disable_plaintext_auth.*/disable_plaintext_auth = no/' \
+      /etc/dovecot/conf.d/10-auth.conf
+  sudo systemctl restart dovecot
+
+Verification :
+  doveconf -h disable_plaintext_auth
+  -> no
+
+
+PROBLEME 2 : setup_thunderbird.sh se tuait lui-meme
+--------------------------------------------------------------------------------
+Cause   : Le script utilisait "pkill -f thunderbird" pour fermer Thunderbird.
+          L'option -f (full) matche la ligne de commande complete, donc
+          "bash setup_thunderbird.sh" contient le mot "thunderbird" et le
+          script se tuait lui-meme immediatement apres la ligne pkill.
+
+Diagnostic :
+  - Le script affichait ">>> 0. Fermeture de Thunderbird" puis s'arretait
+  - Aucune des etapes suivantes (nettoyage, ecriture comptes) n'etait executee
+  - prefs.js restait inchange
+
+Solution :
+  Remplacer :
+    pkill -f thunderbird
+  Par :
+    TB_PID=$(pgrep -x thunderbird 2>/dev/null || pgrep -x thunderbird-bin 2>/dev/null)
+    if [ -n "$TB_PID" ]; then
+        kill $TB_PID 2>/dev/null
+    fi
+
+  pgrep -x matche uniquement le nom exact du processus "thunderbird",
+  pas le script "setup_thunderbird.sh".
+
+
+PROBLEME 3 : setup_thunderbird.sh ecrivait des configs en double
+--------------------------------------------------------------------------------
+Cause   : L'ancien script ajoutait les configs a la fin de prefs.js sans
+          supprimer les anciennes. A chaque execution, de nouvelles lignes
+          s'ajoutaient mais Thunderbird utilisait toujours les premieres
+          (celles creees manuellement lors de la premiere configuration).
+
+          De plus, la numerotation commencait a 0 (id0, server0, smtp0)
+          alors que Thunderbird utilise une numerotation a partir de 1.
+
+Solution : Le script a ete reecrit pour :
+  1. Fermer Thunderbird proprement (sans se tuer lui-meme)
+  2. Sauvegarder prefs.js
+  3. SUPPRIMER toutes les anciennes configs mail :
+     - sed -i '/mail\.identity\./d' "$PREFS"
+     - sed -i '/mail\.server\.server/d' "$PREFS"
+     - sed -i '/mail\.smtpserver\./d' "$PREFS"
+     - sed -i '/mail\.account\./d' "$PREFS"
+     - sed -i '/mail\.accountmanager\./d' "$PREFS"
+     - sed -i '/192\.168\.1\.1/d' "$PREFS"  (ancienne IP)
+  4. Reecrire proprement les 3 comptes avec :
+     - Numerotation correcte (id1-3, server1-3, smtp1-3, account1-4)
+     - server4 = Local Folders (obligatoire pour Thunderbird)
+     - IP correcte : 192.168.100.1
+     - socketType=0 et try_ssl=0 (pas de SSL)
+  5. Verifier le resultat
+
+
+PROBLEME 4 : Mauvaise IP dans Thunderbird (192.168.1.1 au lieu de 192.168.100.1)
+--------------------------------------------------------------------------------
+Cause   : Le premier setup de Thunderbird avait ete fait avec l'IP 192.168.1.1
+          (ancienne valeur dans les scripts). Cette IP etait codee en dur dans
+          prefs.js pour le serveur IMAP et SMTP.
+
+Solution : Le nouveau setup_thunderbird.sh :
+  - Supprime toutes les lignes contenant 192.168.1.1
+  - Ecrit les nouvelles configs avec 192.168.100.1
+
+
+PROBLEME 5 : Comptes contact@exemple1.fr et contact@exemple2.eu manquants
+--------------------------------------------------------------------------------
+Cause   : Consequence directe des problemes 2 et 3. Le script ne s'executait
+          pas completement (probleme 2) et quand il s'executait, les anciennes
+          configs etaient prioritaires (probleme 3).
+
+Solution : Le nouveau script supprime tout et recree les 3 comptes proprement.
+
+
+================================================================================
+  CONFIGURATION THUNDERBIRD FINALE
+================================================================================
+
+  Profil : ~/.thunderbird/97x59lcp.default-release/prefs.js
+
+  Compte 1 :
+    Email     : contact@exemple.com
+    IMAP      : 192.168.100.1:143 (server1, pas de SSL)
+    SMTP      : 192.168.100.1:25  (smtp1, pas de SSL)
+    User      : exemple
+    Password  : but1
+
+  Compte 2 :
+    Email     : contact@exemple1.fr
+    IMAP      : 192.168.100.1:143 (server2, pas de SSL)
+    SMTP      : 192.168.100.1:25  (smtp2, pas de SSL)
+    User      : exemple
+    Password  : but1
+
+  Compte 3 :
+    Email     : contact@exemple2.eu
+    IMAP      : 192.168.100.1:143 (server3, pas de SSL)
+    SMTP      : 192.168.100.1:25  (smtp3, pas de SSL)
+    User      : exemple
+    Password  : but1
+
+  Local Folders : server4 (obligatoire, account4)
+
+
+================================================================================
+  TESTS FINAUX
+================================================================================
+
+  Phase 6 SERVEUR :
+    - Postfix et Dovecot installes et actifs
+    - Ports 25 (SMTP), 143 (IMAP), 110 (POP3) en ecoute
+    - mydestination contient les 3 domaines
+    - home_mailbox = Maildir/
+    - Alias contact -> exemple
+    - Dovecot mail_location = maildir:~/Maildir
+    - disable_plaintext_auth = no
+    - SMTP et IMAP repondent en local
+    - Mails recus dans Maildir/new/
+
+  Phase 6 CLIENT :
+    - Thunderbird installe (115.18.0)
+    - Ports 25, 143, 110 accessibles depuis le client
+    - SMTP repond (220 exemple.com ESMTP Postfix)
+    - EHLO accepte
+    - IMAP LOGIN fonctionne (apres correction disable_plaintext_auth)
+    - Mails envoyes et acceptes vers les 3 domaines
+    - Mail inter-domaine (exemple.com -> exemple1.fr) fonctionne
+    - 3 comptes configures dans Thunderbird
+    - IP 192.168.100.1 dans tous les serveurs
+    - Enregistrements MX OK pour les 3 domaines
+
+
+================================================================================
+  LECONS RETENUES
+================================================================================
+
+  1. pkill -f matche la ligne de commande complete. Un script nomme
+     "setup_thunderbird.sh" sera tue par "pkill -f thunderbird".
+     Utiliser pgrep -x (match exact du nom de processus) a la place.
+
+  2. Thunderbird lit prefs.js au demarrage et le reecrit a la fermeture.
+     Il faut TOUJOURS fermer Thunderbird AVANT de modifier prefs.js,
+     sinon les modifications sont ecrasees.
+
+  3. Les doublons dans prefs.js : Thunderbird utilise la PREMIERE
+     occurrence d'une preference. Ajouter a la fin ne suffit pas,
+     il faut d'abord supprimer les anciennes lignes.
+
+  4. Dovecot refuse par defaut les logins en clair (securite).
+     En environnement de test sans SSL, il faut mettre
+     disable_plaintext_auth = no. En production, utiliser STARTTLS.
+
+  5. La numerotation Thunderbird commence a 1, pas a 0.
+     server4 doit etre reserve pour "Local Folders" (obligatoire).

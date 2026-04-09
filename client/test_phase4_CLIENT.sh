@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Fix terminal inconnu (xterm-kitty via SSH)
+case "$TERM" in
+    xterm-kitty|*-kitty) export TERM=xterm-256color ;;
+esac
+
 # =============================================================
 # test_phase4_CLIENT.sh - Verification Phase 4 : SGBD (Client)
 # Aucune creation, uniquement des verifications

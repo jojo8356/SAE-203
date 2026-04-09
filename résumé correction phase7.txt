@@ -1,0 +1,174 @@
+================================================================================
+  RESUME PHASE 7 - ENVOI AUTOMATIQUE DE MAILS (CRON)
+  SAE 203 - IUT de Nice
+================================================================================
+
+
+AUCUN PROBLEME MAJEUR DETECTE
+--------------------------------------------------------------------------------
+La phase 7 etait deja fonctionnelle grace au script create_php.sh qui avait
+deploye mail.php et cron_mail.php correctement.
+
+
+================================================================================
+  ARCHITECTURE DE L'ENVOI AUTOMATIQUE
+================================================================================
+
+  1. L'utilisateur accede a http://www.exemple.com/mail.php
+  2. Il peut :
+     a) Voir les vehicules avec CT dans les 30 prochains jours
+     b) Envoyer les rappels immediatement (bouton)
+     c) Programmer l'envoi automatique via cron (formulaire avec heure)
+     d) Consulter l'historique des rappels envoyes
+  3. Le cron execute cron_mail.php a l'heure programmee (defaut: 3h00)
+  4. cron_mail.php :
+     - Se connecte a PostgreSQL
+     - Cherche les vehicules avec CT dans les 30 jours
+     - Exclut ceux deja rappeles dans les 7 derniers jours (anti-spam)
+     - Envoie un mail a chaque proprietaire concerne via mail()
+     - Enregistre chaque envoi dans la table rappel_envoye
+     - Log le resultat dans /var/log/carte_grise_mail.log
+
+
+================================================================================
+  FICHIERS CONCERNES
+================================================================================
+
+  /users/firms/exemple/www/mail.php
+  ---------------------------------
+  Interface web pour :
+    - Visualiser les vehicules avec CT proche (SELECT + JOIN)
+    - Envoyer les rappels manuellement (mail() en PHP)
+    - Programmer le cron via formulaire (shell_exec + crontab)
+    - Afficher l'historique des rappels (SELECT rappel_envoye)
+
+  Fonctionnalites :
+    - Formulaire POST avec action "envoyer_maintenant"
+    - Formulaire POST avec action "programmer_cron" + champ input type="time"
+    - Tableau des vehicules concernes (proprietaire, email, immatriculation,
+      date CT, jours restants)
+    - Tableau de l'historique des rappels envoyes (20 derniers)
+    - Indicateur si le cron est deja actif
+
+  /users/firms/exemple/www/cron_mail.php
+  ---------------------------------------
+  Script autonome execute par cron :
+    - Connexion directe a PostgreSQL (pas via db.php)
+    - Requete : vehicules avec CT entre aujourd'hui et +30 jours
+    - Exclusion : vehicules deja rappeles dans les 7 derniers jours
+    - Envoi : mail() avec sujet, corps, headers (From: contact@exemple.com)
+    - Enregistrement : INSERT INTO rappel_envoye
+    - Log : echo avec date vers stdout (redirige par cron vers le log)
+
+  Usage cron :
+    0 3 * * * php /users/firms/exemple/www/cron_mail.php >> /var/log/carte_grise_mail.log 2>&1
+
+
+================================================================================
+  CONFIGURATION CRON
+================================================================================
+
+  Ligne cron (crontab de l'utilisateur "exemple") :
+    0 3 * * * php /users/firms/exemple/www/cron_mail.php >> /var/log/carte_grise_mail.log 2>&1
+
+  Signification :
+    0     -> minute 0
+    3     -> heure 3 (3h du matin)
+    * * * -> tous les jours, tous les mois, tous les jours de la semaine
+
+  Le formulaire mail.php permet de changer l'heure dynamiquement.
+  Il lit le crontab actuel, supprime l'ancienne ligne cron_mail.php,
+  et ajoute la nouvelle avec l'heure choisie.
+
+
+================================================================================
+  TABLE rappel_envoye
+================================================================================
+
+  CREATE TABLE rappel_envoye (
+      id SERIAL PRIMARY KEY,
+      vehicule_id INTEGER REFERENCES vehicule(id) ON DELETE CASCADE,
+      date_envoi TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      type_rappel VARCHAR(50) DEFAULT 'controle_technique'
+  );
+
+  Cette table sert a :
+    - Historiser tous les rappels envoyes
+    - Eviter le spam (ne pas renvoyer si deja envoye dans les 7 jours)
+    - Afficher l'historique dans l'interface mail.php
+
+
+================================================================================
+  CONTENU DU MAIL ENVOYE
+================================================================================
+
+  Sujet : Rappel : Controle technique a venir - AB-123-CD
+
+  Corps :
+    Bonjour M. Jean Dupont,
+
+    Nous vous informons que le controle technique de votre vehicule
+    est prevu prochainement :
+
+      Vehicule : Renault Clio
+      Immatriculation : AB-123-CD
+      Date du CT : 2026-05-01
+
+    Merci de prendre rendez-vous dans les meilleurs delais.
+
+    Cordialement,
+    Service Carte Grise - www.exemple.com
+
+  Headers :
+    From: contact@exemple.com
+    Reply-To: contact@exemple.com
+    Content-Type: text/plain; charset=UTF-8
+
+
+================================================================================
+  SECURITE
+================================================================================
+
+  - Anti-spam : ne renvoie pas si rappel envoye dans les 7 derniers jours
+    (sous-requete NOT IN sur rappel_envoye)
+  - Le cron tourne sous l'utilisateur "exemple" (pas root)
+  - Les donnees passent par pg_query_params (protection SQL injection)
+  - Le formulaire cron utilise shell_exec + crontab (execution serveur)
+
+
+================================================================================
+  TESTS
+================================================================================
+
+  Phase 7 SERVEUR :
+    - cron_mail.php existe avec pg_connect, mail(), filtre 30 jours, anti-spam
+    - mail.php existe avec envoi immediat, programmation cron, historique
+    - Formulaire avec champ time et action POST
+    - Cron configure dans crontab de l'utilisateur exemple
+    - Service cron actif
+    - Execution test de cron_mail.php reussie
+    - Rappels enregistres dans la table rappel_envoye
+
+  Phase 7 CLIENT :
+    - mail.php accessible HTTP et HTTPS sans erreur
+    - Contenu correct (vehicules CT, bouton envoi, cron, historique)
+    - Test POST envoyer_maintenant fonctionne
+    - Test POST programmer_cron fonctionne
+    - Mail de test SMTP envoye avec succes
+
+
+================================================================================
+  LECONS RETENUES
+================================================================================
+
+  1. Le cron necessite le chemin COMPLET vers php et vers le script.
+     Pas de chemins relatifs dans crontab.
+
+  2. La redirection >> /var/log/... 2>&1 dans le cron permet de capturer
+     les sorties stdout et stderr dans un fichier de log.
+
+  3. L'anti-spam (exclusion des rappels recents) est important pour
+     eviter d'envoyer le meme mail chaque jour au meme proprietaire.
+
+  4. mail() en PHP necessite que Postfix soit installe et actif sur
+     le meme serveur. C'est Postfix qui envoie reellement le mail.

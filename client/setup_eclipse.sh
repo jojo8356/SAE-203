@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Fix terminal inconnu (xterm-kitty via SSH)
+case "$TERM" in
+    xterm-kitty|*-kitty) export TERM=xterm-256color ;;
+esac
+
 # =============================================================
 # setup_eclipse.sh - Installation d'Eclipse IDE
 # =============================================================

@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Fix terminal inconnu (xterm-kitty via SSH)
+case "$TERM" in
+    xterm-kitty|*-kitty) export TERM=xterm-256color ;;
+esac
+
 # =============================================================
 # definitively_IP_SERVER.sh - Configuration IP permanente
 # Interface reseau interne "sae203" (enp0s3)

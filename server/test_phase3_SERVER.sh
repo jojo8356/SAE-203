@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Fix terminal inconnu (xterm-kitty via SSH)
+case "$TERM" in
+    xterm-kitty|*-kitty) export TERM=xterm-256color ;;
+esac
+
 # =============================================================
 # test_phase3_SERVER.sh - Verification Phase 3 : DNS (Bind9)
 # Aucune creation, uniquement des verifications

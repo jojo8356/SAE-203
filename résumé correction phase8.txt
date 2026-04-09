@@ -1,0 +1,95 @@
+================================================================================
+  RESUME CORRECTION PHASE 8 - OUTILS CLIENT + SFTP/SSL
+  SAE 203 - IUT de Nice
+================================================================================
+
+
+PROBLEME 1 : HTTPS www.exemple2.eu retourne 000 sur le serveur
+--------------------------------------------------------------------------------
+Cause   : Le serveur ne pouvait pas resoudre www.exemple2.eu localement.
+          Le fichier /etc/hosts du serveur ne contenait pas les noms de domaine.
+          curl retournait "Could not resolve host: www.exemple2.eu" (code 000).
+
+          Le DNS Bind9 repond avec l'IP 10.0.2.15 (interface NAT) mais le
+          serveur n'avait pas configure resolv.conf pour pointer vers lui-meme,
+          et meme s'il l'avait fait, l'IP 10.0.2.15 n'est pas accessible
+          localement pour HTTPS.
+
+Diagnostic :
+  curl -k https://www.exemple2.eu
+  -> curl: (6) Could not resolve host: www.exemple2.eu
+
+  curl -sk https://localhost/ -H "Host: www.exemple2.eu"
+  -> 400 (Bad Request, a cause du SNI SSL qui ne matche pas "localhost")
+
+Solution (sur le SERVEUR) :
+  echo "127.0.0.1  www.exemple.com www.exemple1.fr www.exemple2.eu" | sudo tee -a /etc/hosts
+
+Verification :
+  curl -k https://www.exemple.com   -> OK (200)
+  curl -k https://www.exemple1.fr   -> OK (200)
+  curl -k https://www.exemple2.eu   -> OK (200)
+
+Note : Le VirtualHost SSL etait correctement configure (a2query -s, configtest
+Syntax OK). Le probleme etait uniquement la resolution DNS locale.
+
+
+================================================================================
+  ETAT FINAL PHASE 8
+================================================================================
+
+  SERVEUR :
+    - openssh-server installe et actif
+    - Port 22 en ecoute, SFTP configure dans sshd_config
+    - PasswordAuthentication autorise
+    - Certificat SSL valide (auto-signe, non expire)
+    - Module SSL Apache actif
+    - VirtualHosts SSL actifs pour les 3 domaines
+    - HTTPS fonctionne localement pour les 3 domaines
+    - Tous les ports en ecoute : 22, 25, 53, 80, 143, 443, 5432
+
+  CLIENT :
+    - Firefox, FileZilla, Thunderbird installes
+    - openssh-client, dnsutils, curl, wget, net-tools installes
+    - Port 22 accessible sur le serveur
+    - HTTP et HTTPS fonctionnent pour les 3 domaines
+    - Certificat SSL recuperable et auto-signe
+    - Tous les ports accessibles : 22, 25, 53, 80, 143, 443
+
+  Configuration FileZilla :
+    Hote        : sftp://192.168.100.1
+    Port        : 22
+    Protocole   : SFTP - SSH File Transfer Protocol
+    Utilisateur : exemple
+    Mot de passe: but1
+    Repertoire  : /users/firms/exemple/www/
+
+
+================================================================================
+  /etc/hosts DU SERVEUR (etat final)
+================================================================================
+
+  127.0.0.1  www.exemple.com www.exemple1.fr www.exemple2.eu
+
+  Cette ligne est necessaire pour que les tests locaux (curl https://...)
+  fonctionnent sur le serveur lui-meme. Sans elle, le serveur ne peut pas
+  resoudre ses propres noms de domaine.
+
+
+================================================================================
+  LECONS RETENUES
+================================================================================
+
+  1. Un serveur web doit pouvoir resoudre ses propres noms de domaine.
+     Ajouter les domaines dans /etc/hosts du serveur pointant vers 127.0.0.1.
+
+  2. curl retourne le code 000 quand il ne peut pas se connecter du tout
+     (resolution DNS echouee, timeout, connexion refusee).
+
+  3. Le header "Host:" avec curl et HTTPS ne fonctionne pas bien car
+     le SNI (Server Name Indication) est envoye au niveau TLS avant
+     le header HTTP. Il faut utiliser --resolve ou /etc/hosts a la place.
+
+  4. SNI (Server Name Indication) est l'extension TLS qui permet a
+     un serveur d'heberger plusieurs certificats SSL sur la meme IP.
+     Apache utilise le SNI pour choisir le bon VirtualHost SSL.

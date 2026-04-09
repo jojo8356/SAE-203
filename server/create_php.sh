@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Fix terminal inconnu (xterm-kitty via SSH)
+case "$TERM" in
+    xterm-kitty|*-kitty) export TERM=xterm-256color ;;
+esac
+
 # =============================================================
 # create_php.sh - SAE S203 - Création de l'application PHP
 # Carte Grise - PostgreSQL + Upload + Mail + Cron

@@ -1,0 +1,242 @@
+================================================================================
+  RESUME PHASE 9 (BONUS) - AUTOMATISATION AJOUT DE DOMAINE
+  SAE 203 - IUT de Nice
+================================================================================
+
+
+PROBLEME : Le script d'automatisation n'existait pas
+--------------------------------------------------------------------------------
+Constat : Le test phase 9 n'a trouve aucun script d'automatisation.
+Solution : Creation de 2 scripts complementaires :
+  - ajouter_domaine.py : Script Python principal d'automatisation
+  - create_domain.sh   : Wrapper bash qui verifie l'environnement et
+                          installe les dependances avant de lancer le Python
+
+
+================================================================================
+  ARCHITECTURE DE LA SOLUTION
+================================================================================
+
+  create_domain.sh (bash)
+      |
+      |-- 1. Verifie python3 (installe si absent)
+      |-- 2. Verifie ajouter_domaine.py (syntaxe Python)
+      |-- 3. Verifie et installe les services :
+      |       - Apache2 + modules ssl, rewrite
+      |       - Bind9 + bind9utils + dnsutils
+      |       - PostgreSQL + postgresql-contrib
+      |       - PHP + libapache2-mod-php + php-pgsql
+      |       - Postfix
+      |       - Dovecot (core + imapd)
+      |       - OpenSSH
+      |       - OpenSSL
+      |-- 4. Verifie le certificat SSL (cree/regenere si besoin)
+      |-- 5. Verifie l'utilisateur "exemple" et /users/firms/exemple/www/
+      |-- 6. Verifie les ports (22, 25, 53, 80, 143, 443, 5432)
+      |-- 7. Lance ajouter_domaine.py avec les arguments
+      v
+  ajouter_domaine.py (python3)
+      |
+      |-- 9.1.1 Cree VirtualHost Apache HTTP + HTTPS
+      |-- 9.1.2 Cree zone DNS Bind9 (SOA, NS, A, MX, mail)
+      |-- 9.1.3 Ajoute le domaine dans Postfix (mydestination + alias)
+      |-- 9.1.4 Cree base de donnees PostgreSQL + droits
+      |-- 9.1.5 Cree page web par defaut + /etc/hosts
+      |-- Redemarre apache2, bind9, postfix
+      v
+  Domaine operationnel (HTTP, HTTPS, DNS, Mail, BDD)
+
+
+================================================================================
+  USAGE
+================================================================================
+
+  # Ajouter un nouveau domaine
+  sudo ./create_domain.sh monsite.org
+
+  # Simulation (ne modifie rien, montre ce qui serait fait)
+  sudo ./create_domain.sh monsite.org --dry-run
+
+  # Lister tous les domaines configures
+  sudo ./create_domain.sh --list
+
+  # Supprimer un domaine
+  sudo ./create_domain.sh monsite.org --remove
+
+
+================================================================================
+  CE QUE FAIT ajouter_domaine.py POUR CHAQUE DOMAINE
+================================================================================
+
+  9.1.1 Apache (VirtualHost HTTP + HTTPS)
+  ----------------------------------------
+  - Cree /etc/apache2/sites-available/<domaine>.conf (port 80)
+  - Cree /etc/apache2/sites-available/<domaine>-ssl.conf (port 443)
+  - ServerName www.<domaine>, ServerAlias <domaine>
+  - DocumentRoot /users/firms/exemple/www
+  - SSL avec le certificat auto-signe existant
+  - Active les 2 sites (a2ensite)
+
+  9.1.2 DNS Bind9 (zone)
+  -----------------------
+  - Cree /etc/bind/db.<domaine> avec :
+      SOA ns1.<domaine>. admin.<domaine>.
+      NS  ns1.<domaine>.
+      A   ns1 -> 192.168.100.1
+      A   @   -> 192.168.100.1
+      A   www -> 192.168.100.1
+      MX  10  mail.<domaine>.
+      A   mail -> 192.168.100.1
+  - Serial au format YYYYMMDD01
+  - Declare la zone dans /etc/bind/named.conf.local
+  - Verifie avec named-checkzone et named-checkconf
+
+  9.1.3 Mail (Postfix)
+  ---------------------
+  - Ajoute le domaine dans mydestination (postconf -e)
+  - Verifie l'alias contact -> exemple dans /etc/aliases
+  - Lance newaliases si besoin
+
+  9.1.4 Base de donnees (PostgreSQL)
+  -----------------------------------
+  - Nom de la BDD : domaine avec . et - remplaces par _
+    Ex: monsite.org -> monsite_org
+  - CREATE DATABASE monsite_org OWNER exemple
+  - GRANT ALL PRIVILEGES a l'utilisateur exemple
+
+  9.1.5 Repertoire web + /etc/hosts
+  ----------------------------------
+  - Cree une page HTML par defaut : index_<domaine>.html
+  - Ajoute 127.0.0.1 www.<domaine> dans /etc/hosts du serveur
+
+  Redemarrage
+  -----------
+  - apache2ctl configtest puis systemctl restart apache2
+  - named-checkconf puis systemctl restart bind9
+  - systemctl restart postfix
+
+
+================================================================================
+  FONCTIONNALITE DE SUPPRESSION (--remove)
+================================================================================
+
+  sudo ./create_domain.sh monsite.org --remove
+
+  Supprime :
+  - VirtualHosts Apache (a2dissite + suppression .conf)
+  - Fichier de zone DNS + declaration dans named.conf.local
+  - Domaine de mydestination Postfix
+  - Ligne dans /etc/hosts
+  - Base de donnees PostgreSQL (DROP DATABASE)
+  - Redemarre tous les services
+
+
+================================================================================
+  FONCTIONNALITE DE LISTING (--list)
+================================================================================
+
+  sudo ./create_domain.sh --list
+
+  Affiche :
+  - VirtualHosts Apache (actif/inactif)
+  - Zones DNS configurees
+  - Domaines dans mydestination Postfix
+  - Bases de donnees PostgreSQL
+
+
+================================================================================
+  CE QUE FAIT create_domain.sh (WRAPPER)
+================================================================================
+
+  Avant de lancer le Python, verifie et corrige :
+
+  1. Python3 installe ?
+     -> apt-get install python3 si absent
+
+  2. ajouter_domaine.py present et syntaxe OK ?
+     -> Cherche dans le meme repertoire, ~/, /root/
+
+  3. Services installes et actifs ?
+     -> Installe chaque paquet manquant automatiquement
+     -> Demarre chaque service inactif
+     -> Active les modules Apache (ssl, rewrite)
+
+  4. Certificat SSL valide ?
+     -> Cree avec openssl si absent
+     -> Regenere si expire
+
+  5. Utilisateur "exemple" et repertoire www/ ?
+     -> Cree si absent
+
+  6. Ports en ecoute ?
+     -> Verifie 22, 25, 53, 80, 143, 443, 5432
+     -> Signale les ports manquants
+
+  Si tout est OK -> lance python3 ajouter_domaine.py avec les arguments
+  Si erreur -> s'arrete et affiche les problemes
+
+
+================================================================================
+  CHOIX TECHNIQUES
+================================================================================
+
+  Pourquoi Python pour ajouter_domaine.py ?
+  - Plus lisible que bash pour la logique complexe
+  - Gestion native des fichiers (open, write, read)
+  - argparse pour les options en ligne de commande (--dry-run, --remove, --list)
+  - Meilleure gestion des erreurs (try/except)
+  - Plus facile a maintenir et etendre
+
+  Pourquoi un wrapper bash (create_domain.sh) ?
+  - Verification de l'environnement systeme (dpkg, systemctl, apt-get)
+  - Installation des dependances (apt-get install)
+  - Bash est natif sur tous les systemes Linux
+  - Le wrapper s'assure que tout est pret avant de lancer le Python
+
+  Pourquoi --dry-run ?
+  - Permet de voir ce que le script ferait sans rien modifier
+  - Utile pour tester avant d'appliquer en production
+  - Recommande pour la premiere utilisation
+
+
+================================================================================
+  EXEMPLE DE SORTIE
+================================================================================
+
+  $ sudo ./create_domain.sh test.org
+
+  >>> 1. Python3
+    [OK]   python3 disponible (Python 3.8.10)
+  >>> 2. Script ajouter_domaine.py
+    [OK]   Trouve : ./ajouter_domaine.py
+    [OK]   Syntaxe Python OK
+  >>> 3. Services requis
+    [OK]   apache2
+    [OK]   Module SSL
+    [OK]   bind9
+    [OK]   postgresql
+    [OK]   php
+    [OK]   postfix
+    [OK]   dovecot-core
+    [OK]   openssh-server
+  ...
+  >>> 7. Lancement de ajouter_domaine.py
+
+  >>> 9.1.1 VirtualHost Apache + SSL : test.org
+    [OK]   VirtualHost HTTP
+    [OK]   VirtualHost HTTPS
+  >>> 9.1.2 Zone DNS Bind9 : test.org
+    [OK]   Fichier de zone
+    [OK]   named-checkzone : OK
+  >>> 9.1.3 Boite mail : test.org
+    [OK]   test.org ajoute dans mydestination
+  >>> 9.1.4 Base de donnees : test.org
+    [OK]   Base 'test_org' creee
+  >>> 9.1.5 Repertoire web
+    [OK]   Page par defaut creee
+
+  Domaine test.org ajoute avec succes !
+    URL HTTP  : http://www.test.org
+    URL HTTPS : https://www.test.org
+    Mail      : contact@test.org
+    BDD       : test_org
