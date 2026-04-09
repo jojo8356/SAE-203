@@ -1,0 +1,1739 @@
+================================================================================
+  QUESTIONS & REPONSES - SAE 203 - Installation de Services Reseaux
+  IUT de Nice - BUT 1
+================================================================================
+
+
+################################################################################
+#                                                                              #
+#                    PARTIE 1 : VIRTUALBOX & MACHINES VIRTUELLES               #
+#                                                                              #
+################################################################################
+
+
+--------------------------------------------------------------------------------
+Q1 : Qu'est-ce qu'une machine virtuelle (VM) ?
+--------------------------------------------------------------------------------
+R : Une machine virtuelle est un ordinateur logiciel qui, comme un ordinateur
+physique, execute un systeme d'exploitation et des applications. La VM est
+composee d'un ensemble de fichiers de configuration et de specification, et
+est supportee par les ressources physiques de l'hote (RAM, CPU, stockage).
+Elle permet d'isoler un systeme d'exploitation complet dans un environnement
+controle, sans affecter la machine hote.
+
+
+--------------------------------------------------------------------------------
+Q2 : Qu'est-ce que VirtualBox ? Pourquoi l'utiliser ?
+--------------------------------------------------------------------------------
+R : VirtualBox est un logiciel de virtualisation gratuit et open-source
+developpe par Oracle. Il permet de creer et gerer des machines virtuelles.
+On l'utilise car :
+  - Il est gratuit (contrairement a VMware Workstation Pro)
+  - Il est multiplateforme (Windows, macOS, Linux)
+  - Il est simple d'utilisation
+  - Il supporte plusieurs systemes d'exploitation invites
+  - Il permet le mode reseau Bridge et Host-Only necessaires au projet
+Alternatives : VMware Workstation, Hyper-V (Windows), KVM (Linux), QEMU.
+
+
+--------------------------------------------------------------------------------
+Q3 : Quelle est la difference entre le systeme hote et le systeme invite ?
+--------------------------------------------------------------------------------
+R : Le systeme hote (Host) est le systeme d'exploitation principal installe
+sur la machine physique (ex: Windows, macOS). Le systeme invite (Guest) est
+le systeme d'exploitation installe dans la machine virtuelle (dans notre cas
+Ubuntu ou Debian). Le Guest s'execute "a l'interieur" du Host grace a
+l'hyperviseur VirtualBox.
+
+
+--------------------------------------------------------------------------------
+Q4 : Pourquoi avoir choisi Ubuntu/Debian comme systeme invite ?
+--------------------------------------------------------------------------------
+R : Ubuntu et Debian sont des distributions Linux tres utilisees pour les
+serveurs car :
+  - Elles sont gratuites et open-source
+  - Elles ont une grande communaute et beaucoup de documentation
+  - Le gestionnaire de paquets APT facilite l'installation de logiciels
+  - Elles sont stables et securisees
+  - La majorite des serveurs web dans le monde tournent sous Linux
+  - Debian est la base d'Ubuntu, donc les commandes sont similaires
+Ubuntu est plus orientee "desktop" avec une interface graphique, Debian est
+plus legere et orientee "serveur".
+
+
+--------------------------------------------------------------------------------
+Q5 : Comment configurer le reseau dans VirtualBox ? Quels sont les modes ?
+--------------------------------------------------------------------------------
+R : VirtualBox propose plusieurs modes reseau :
+
+  1. NAT (par defaut) : La VM accede a internet via l'IP de l'hote. La VM
+     n'est pas accessible depuis l'exterieur ni depuis d'autres VM.
+
+  2. Bridge (Pont) : La VM obtient sa propre IP sur le reseau physique,
+     comme si c'etait une machine reelle. Les VM et l'hote peuvent
+     communiquer. C'est le mode ideal pour notre projet car le CLIENT
+     doit acceder au SERVEUR.
+
+  3. Host-Only : Cree un reseau prive entre l'hote et les VM. Les VM
+     peuvent communiquer entre elles et avec l'hote mais pas avec internet.
+     Utile si on ne veut pas exposer les VM au reseau externe.
+
+  4. Reseau interne : Les VM communiquent entre elles uniquement, pas avec
+     l'hote ni internet.
+
+Pour notre SAE, on utilise le mode Bridge ou Host-Only pour que les deux VM
+(client et serveur) puissent communiquer entre elles.
+
+
+--------------------------------------------------------------------------------
+Q6 : Quels parametres de VM avez-vous configure et pourquoi ?
+--------------------------------------------------------------------------------
+R :
+  - RAM : 2 Go minimum (4 Go recommande pour le serveur) pour pouvoir faire
+    tourner les services (Apache, MySQL, Bind9, Postfix, Dovecot)
+  - CPU : 2 coeurs minimum pour des performances acceptables
+  - Disque dur : 20-40 Go en allocation dynamique (le fichier VDI grossit
+    au besoin, ne prend pas tout l'espace immediatement)
+  - Reseau : Mode Bridge pour la communication entre VMs
+  - Type de controleur : SATA ou IDE selon les besoins
+  - Affichage : 128 Mo de memoire video pour l'interface graphique
+
+
+--------------------------------------------------------------------------------
+Q7 : Qu'est-ce qu'une IP statique et pourquoi en configurer une ?
+--------------------------------------------------------------------------------
+R : Une IP statique est une adresse IP fixe qui ne change pas, contrairement
+a une IP dynamique attribuee par DHCP. On en configure une sur le serveur
+car :
+  - Le DNS doit pointer vers une IP fixe
+  - Le client doit toujours savoir a quelle adresse contacter le serveur
+  - Les VirtualHosts Apache sont lies a l'IP du serveur
+  - Les fichiers de zone DNS contiennent l'IP du serveur (enregistrements A)
+  - Les services mail (Postfix/Dovecot) necessitent une IP stable
+
+Configuration dans /etc/network/interfaces ou via netplan (/etc/netplan/).
+
+
+--------------------------------------------------------------------------------
+Q8 : Qu'est-ce qu'aptitude ? Pourquoi l'installer en premier ?
+--------------------------------------------------------------------------------
+R : Aptitude est un gestionnaire de paquets en ligne de commande pour
+Debian/Ubuntu, similaire a apt-get mais avec des fonctionnalites
+supplementaires :
+  - Meilleure gestion des dependances
+  - Interface semi-graphique en mode texte (ncurses)
+  - Meilleure resolution des conflits de paquets
+  - Suivi des paquets installes manuellement vs automatiquement
+
+On l'installe en premier (apt-get install aptitude) car le sujet le demande
+explicitement. Ensuite on utilise "aptitude install" pour tous les autres
+paquets. L'alternative standard est apt ou apt-get.
+
+
+--------------------------------------------------------------------------------
+Q9 : Comment verifier la connectivite entre les deux VM ?
+--------------------------------------------------------------------------------
+R : On utilise la commande ping :
+  - Depuis le client : ping <IP_serveur>   (ex: ping 192.168.1.1)
+  - Depuis le serveur : ping <IP_client>
+Si le ping fonctionne (reponses recues), les VM peuvent communiquer.
+En cas d'echec, verifier :
+  - Le mode reseau VirtualBox (Bridge/Host-Only)
+  - La configuration IP des deux machines
+  - Le pare-feu (sudo ufw status / sudo iptables -L)
+
+
+################################################################################
+#                                                                              #
+#                    PARTIE 2 : APACHE2 (SERVEUR WEB)                          #
+#                                                                              #
+################################################################################
+
+
+--------------------------------------------------------------------------------
+Q10 : Qu'est-ce qu'Apache2 ?
+--------------------------------------------------------------------------------
+R : Apache2 (Apache HTTP Server) est le serveur web le plus utilise au monde.
+C'est un logiciel open-source developpe par la fondation Apache. Il permet de
+servir des pages web (HTML, PHP, etc.) aux clients via le protocole HTTP/HTTPS.
+Il ecoute sur le port 80 (HTTP) et le port 443 (HTTPS).
+
+Alternatives : Nginx (plus performant pour les fichiers statiques et le reverse
+proxy), Lighttpd (leger), Caddy (HTTPS automatique), IIS (Microsoft).
+
+
+--------------------------------------------------------------------------------
+Q11 : Comment installer Apache2 ?
+--------------------------------------------------------------------------------
+R : sudo aptitude install apache2 apache2-utils
+Puis :
+  - sudo systemctl enable apache2  (demarrage automatique au boot)
+  - sudo systemctl start apache2   (demarrage immediat)
+Verification : sudo systemctl status apache2
+Test : ouvrir http://localhost dans un navigateur -> page par defaut Apache.
+
+
+--------------------------------------------------------------------------------
+Q12 : Qu'est-ce qu'un VirtualHost ? A quoi ca sert ?
+--------------------------------------------------------------------------------
+R : Un VirtualHost (hote virtuel) est une configuration Apache qui permet
+d'heberger plusieurs sites web sur un seul serveur. Chaque VirtualHost
+associe un nom de domaine a un repertoire (DocumentRoot) sur le disque.
+
+Exemple : sur notre serveur, on a 3 VirtualHosts :
+  - www.exemple.com    -> /users/firms/exemple/www/
+  - www.exemple1.fr    -> /users/firms/exemple/www/
+  - www.exemple2.eu    -> /users/firms/exemple/www/
+
+Le serveur utilise le "Host header" de la requete HTTP pour savoir quel
+VirtualHost servir. C'est le "name-based virtual hosting".
+
+Fichiers de config : /etc/apache2/sites-available/
+Activation : sudo a2ensite exemple.com.conf
+Desactivation : sudo a2dissite exemple.com.conf
+
+
+--------------------------------------------------------------------------------
+Q13 : Ou se trouvent les fichiers de configuration Apache ?
+--------------------------------------------------------------------------------
+R :
+  /etc/apache2/                      -> Repertoire principal de config
+  /etc/apache2/apache2.conf          -> Configuration globale
+  /etc/apache2/ports.conf            -> Ports d'ecoute (80, 443)
+  /etc/apache2/sites-available/      -> VirtualHosts disponibles
+  /etc/apache2/sites-enabled/        -> VirtualHosts actives (liens symboliques)
+  /etc/apache2/mods-available/       -> Modules disponibles
+  /etc/apache2/mods-enabled/         -> Modules actives
+  /var/log/apache2/                  -> Logs (access.log, error.log)
+
+Commandes utiles :
+  a2ensite / a2dissite   -> activer/desactiver un site
+  a2enmod / a2dismod     -> activer/desactiver un module
+  apache2ctl configtest  -> verifier la syntaxe de la config
+  systemctl reload apache2 -> recharger la config sans redemarrer
+
+
+--------------------------------------------------------------------------------
+Q14 : A quoi sert la directive DocumentRoot ?
+--------------------------------------------------------------------------------
+R : DocumentRoot est la directive Apache qui indique le repertoire racine
+du site web. C'est le repertoire ou Apache cherche les fichiers quand un
+client fait une requete HTTP.
+
+Exemple : si DocumentRoot est /users/firms/exemple/www/ et qu'un client
+demande http://www.exemple.com/index.html, Apache va chercher le fichier
+/users/firms/exemple/www/index.html sur le disque.
+
+Dans notre projet, le DocumentRoot est /users/firms/exemple/www/ comme
+demande par le sujet.
+
+
+--------------------------------------------------------------------------------
+Q15 : Qu'est-ce que la directive "Require all granted" ?
+--------------------------------------------------------------------------------
+R : C'est une directive de controle d'acces Apache 2.4+ qui autorise
+l'acces a tous les clients. Sans cette directive, Apache refuse l'acces
+(erreur 403 Forbidden).
+
+Autres options :
+  - Require all denied    -> Refuse tout acces
+  - Require ip 192.168.1  -> N'autorise que les IP commencant par 192.168.1
+  - Require local         -> N'autorise que les connexions locales (localhost)
+
+Dans notre VirtualHost :
+  <Directory /users/firms/exemple/www>
+      AllowOverride All
+      Require all granted
+  </Directory>
+
+
+--------------------------------------------------------------------------------
+Q16 : Qu'est-ce que le module "rewrite" d'Apache ? Pourquoi l'activer ?
+--------------------------------------------------------------------------------
+R : Le module mod_rewrite permet de reecrire les URLs. Il est utile pour :
+  - Rediriger HTTP vers HTTPS
+  - Creer des URLs propres (URL rewriting)
+  - Rediriger des anciennes pages vers de nouvelles
+Activation : sudo a2enmod rewrite
+
+Exemple de regle (dans .htaccess ou VirtualHost) :
+  RewriteEngine On
+  RewriteCond %{HTTPS} off
+  RewriteRule ^(.*)$ https://%{HTTP_HOST}$1 [R=301,L]
+  -> Redirige automatiquement tout le trafic HTTP vers HTTPS.
+
+
+--------------------------------------------------------------------------------
+Q17 : Qu'est-ce que le module "userdir" ?
+--------------------------------------------------------------------------------
+R : Le module mod_userdir permet aux utilisateurs du systeme d'heberger
+leur propre site web dans un sous-repertoire de leur home (generalement
+~/public_html). L'acces se fait via http://serveur/~utilisateur/.
+Activation : sudo a2enmod userdir
+
+
+################################################################################
+#                                                                              #
+#                    PARTIE 3 : HTTPS / SSL / CERTIFICATS                      #
+#                                                                              #
+################################################################################
+
+
+--------------------------------------------------------------------------------
+Q18 : Quelle est la difference entre HTTP et HTTPS ?
+--------------------------------------------------------------------------------
+R :
+  HTTP  (port 80)  : Les donnees circulent en clair sur le reseau. N'importe
+                     qui peut intercepter et lire les echanges (mot de passe,
+                     donnees personnelles...). Pas de chiffrement.
+
+  HTTPS (port 443) : Les donnees sont chiffrees grace au protocole SSL/TLS.
+                     Un certificat numerique garantit l'identite du serveur.
+                     Les donnees sont protegees contre l'interception.
+                     Le navigateur affiche un cadenas.
+
+HTTPS = HTTP + SSL/TLS. Le chiffrement utilise des cles asymetriques (publique
+et privee) pour l'echange initial, puis une cle symetrique pour le reste.
+
+
+--------------------------------------------------------------------------------
+Q19 : Qu'est-ce qu'un certificat SSL auto-signe ?
+--------------------------------------------------------------------------------
+R : Un certificat SSL auto-signe est un certificat que l'on cree soi-meme,
+sans passer par une autorite de certification (CA) reconnue. Il chiffre les
+communications de la meme maniere qu'un certificat "officiel", MAIS le
+navigateur affiche un avertissement de securite car il ne peut pas verifier
+l'identite du serveur aupres d'une CA de confiance.
+
+Avantages :
+  - Gratuit
+  - Rapide a creer
+  - Suffisant pour le developpement et les tests
+
+Inconvenients :
+  - Le navigateur affiche un avertissement "connexion non securisee"
+  - Pas de verification d'identite par un tiers de confiance
+  - Inadapte pour un site en production public
+
+En production, on utilise des certificats delivres par des CA comme :
+  - Let's Encrypt (gratuit, automatise)
+  - DigiCert, Comodo, Thawte (payants)
+
+
+--------------------------------------------------------------------------------
+Q20 : Comment generer un certificat SSL auto-signe ?
+--------------------------------------------------------------------------------
+R : Avec la commande openssl :
+
+  openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+      -keyout /etc/ssl/private/exemple.key \
+      -out /etc/ssl/certs/exemple.crt \
+      -subj "/C=FR/ST=PACA/L=Nice/O=IUT/CN=exemple.com"
+
+Explication des options :
+  -x509        : Genere un certificat auto-signe (pas une demande CSR)
+  -nodes       : Pas de phrase de passe sur la cle privee
+  -days 365    : Validite de 365 jours
+  -newkey rsa:2048 : Cree une nouvelle cle RSA de 2048 bits
+  -keyout      : Chemin de la cle privee
+  -out         : Chemin du certificat
+  -subj        : Informations du certificat (pays, ville, organisation, CN)
+
+CN (Common Name) = le nom de domaine du site. C'est le champ le plus important.
+
+
+--------------------------------------------------------------------------------
+Q21 : Comment activer SSL dans Apache ?
+--------------------------------------------------------------------------------
+R :
+  1. Activer le module SSL : sudo a2enmod ssl
+  2. Creer le certificat (voir Q20)
+  3. Configurer un VirtualHost SSL sur le port 443 :
+
+     <VirtualHost *:443>
+         ServerName www.exemple.com
+         DocumentRoot /users/firms/exemple/www
+         SSLEngine on
+         SSLCertificateFile /etc/ssl/certs/exemple.crt
+         SSLCertificateKeyFile /etc/ssl/private/exemple.key
+     </VirtualHost>
+
+  4. Activer le site : sudo a2ensite exemple.com-ssl.conf
+  5. Redemarrer Apache : sudo systemctl restart apache2
+
+La directive SSLEngine on active le chiffrement SSL/TLS pour ce VirtualHost.
+
+
+--------------------------------------------------------------------------------
+Q22 : Qu'est-ce que TLS ? Quelle est la difference avec SSL ?
+--------------------------------------------------------------------------------
+R : SSL (Secure Sockets Layer) est l'ancien protocole de chiffrement.
+TLS (Transport Layer Security) est son successeur, plus securise.
+En pratique, quand on dit "SSL", on parle souvent de TLS.
+  - SSL 1.0, 2.0, 3.0 : obsoletes, vulnerables
+  - TLS 1.0, 1.1 : deprecies
+  - TLS 1.2 : encore utilise
+  - TLS 1.3 : version actuelle, la plus rapide et securisee
+
+Le terme "certificat SSL" est un abus de langage : c'est un certificat X.509
+utilise avec le protocole TLS.
+
+
+################################################################################
+#                                                                              #
+#                    PARTIE 4 : DNS (BIND9)                                    #
+#                                                                              #
+################################################################################
+
+
+--------------------------------------------------------------------------------
+Q23 : Qu'est-ce que le DNS ?
+--------------------------------------------------------------------------------
+R : DNS (Domain Name System) est le systeme qui traduit les noms de domaine
+en adresses IP. C'est "l'annuaire d'internet".
+  Exemple : www.exemple.com -> 192.168.1.1
+
+Sans DNS, il faudrait taper l'adresse IP de chaque site. Le DNS fonctionne
+de maniere hierarchique :
+  . (racine) -> .com (TLD) -> exemple.com (domaine) -> www.exemple.com (hote)
+
+Le DNS utilise le port 53 en UDP (requetes) et TCP (transferts de zone).
+
+
+--------------------------------------------------------------------------------
+Q24 : Qu'est-ce que Bind9 ? Pourquoi l'utiliser ?
+--------------------------------------------------------------------------------
+R : Bind9 (Berkeley Internet Name Domain) est le serveur DNS le plus utilise
+au monde. Il est open-source et developpe par l'ISC (Internet Systems
+Consortium). Il permet de :
+  - Heberger des zones DNS (serveur autoritaire)
+  - Faire du cache DNS (serveur recursif)
+  - Resoudre des noms pour un reseau local
+
+Alternatives : PowerDNS, Unbound (cache uniquement), dnsmasq (leger),
+Knot DNS, CoreDNS (conteneurs).
+
+
+--------------------------------------------------------------------------------
+Q25 : Comment installer Bind9 ?
+--------------------------------------------------------------------------------
+R : sudo aptitude install bind9 bind9utils dnsutils
+  - bind9      : Le serveur DNS
+  - bind9utils : Outils d'administration (named-checkconf, named-checkzone)
+  - dnsutils   : Outils client (dig, nslookup)
+
+Fichiers de configuration :
+  /etc/bind/named.conf              -> Config principale
+  /etc/bind/named.conf.local        -> Zones locales (nos domaines)
+  /etc/bind/named.conf.options      -> Options (forwarders, etc.)
+  /etc/bind/db.exemple.com          -> Fichier de zone pour exemple.com
+
+
+--------------------------------------------------------------------------------
+Q26 : Qu'est-ce qu'un fichier de zone DNS ?
+--------------------------------------------------------------------------------
+R : Un fichier de zone contient les enregistrements DNS pour un domaine.
+C'est la "base de donnees" du domaine. Exemple pour exemple.com :
+
+  $TTL    604800
+  @   IN  SOA   ns1.exemple.com. admin.exemple.com. (
+                    2         ; Serial (incremente a chaque modif)
+                    604800    ; Refresh (7 jours)
+                    86400     ; Retry (1 jour)
+                    2419200   ; Expire (4 semaines)
+                    604800 )  ; Negative Cache TTL
+  @       IN  NS    ns1.exemple.com.
+  ns1     IN  A     192.168.1.1
+  @       IN  A     192.168.1.1
+  www     IN  A     192.168.1.1
+  @       IN  MX 10 mail.exemple.com.
+  mail    IN  A     192.168.1.1
+
+
+--------------------------------------------------------------------------------
+Q27 : Que signifient les enregistrements DNS (A, AAAA, MX, NS, SOA, CNAME, PTR) ?
+--------------------------------------------------------------------------------
+R :
+  SOA (Start of Authority) : Informations administratives de la zone
+      (serveur DNS principal, email admin, serial, timers). Obligatoire.
+
+  NS (Name Server) : Indique quel serveur DNS est autoritaire pour la zone.
+      Ex : @ IN NS ns1.exemple.com.
+
+  A (Address) : Associe un nom a une adresse IPv4.
+      Ex : www IN A 192.168.1.1  -> www.exemple.com = 192.168.1.1
+
+  AAAA : Comme A mais pour IPv6.
+      Ex : www IN AAAA 2001:db8::1
+
+  MX (Mail Exchanger) : Indique le serveur mail du domaine. Le nombre (10)
+      est la priorite (plus petit = plus prioritaire).
+      Ex : @ IN MX 10 mail.exemple.com.
+
+  CNAME (Canonical Name) : Alias d'un autre nom.
+      Ex : ftp IN CNAME www.exemple.com.  -> ftp.exemple.com pointe vers www
+
+  PTR (Pointer) : Resolution inverse (IP -> nom). Utilise dans les zones
+      inverses.
+      Ex : 1 IN PTR www.exemple.com.
+
+  TXT : Texte libre, souvent utilise pour SPF, DKIM (securite mail).
+
+
+--------------------------------------------------------------------------------
+Q28 : Qu'est-ce que le champ Serial dans le SOA ? Pourquoi est-il important ?
+--------------------------------------------------------------------------------
+R : Le Serial est un numero de version de la zone DNS. Il doit etre
+incremente a chaque modification du fichier de zone. Les serveurs DNS
+secondaires comparent leur Serial avec celui du primaire : si le primaire
+a un Serial plus grand, le secondaire sait qu'il doit mettre a jour sa copie
+de la zone (transfert de zone).
+
+Convention recommandee : YYYYMMDDNN (ex: 2026040901)
+  - YYYY : annee
+  - MM   : mois
+  - DD   : jour
+  - NN   : numero de modification du jour (01, 02, 03...)
+
+
+--------------------------------------------------------------------------------
+Q29 : Comment declarer une zone dans Bind9 ?
+--------------------------------------------------------------------------------
+R : Dans /etc/bind/named.conf.local, ajouter :
+
+  zone "exemple.com" {
+      type master;
+      file "/etc/bind/db.exemple.com";
+  };
+
+  - type master : Ce serveur est le DNS primaire (autoritaire) pour cette zone
+  - file : Chemin vers le fichier de zone contenant les enregistrements
+
+Pour une zone esclave (secondaire) :
+  zone "exemple.com" {
+      type slave;
+      masters { 192.168.1.1; };
+      file "/var/cache/bind/db.exemple.com";
+  };
+
+
+--------------------------------------------------------------------------------
+Q30 : Qu'est-ce qu'une zone inverse ? Comment la configurer ?
+--------------------------------------------------------------------------------
+R : Une zone inverse permet la resolution IP -> nom (l'inverse du DNS normal).
+Elle est utilisee par les serveurs mail pour verifier l'identite d'un serveur.
+
+Pour le reseau 192.168.1.0/24, on cree une zone "1.168.192.in-addr.arpa" :
+
+  zone "1.168.192.in-addr.arpa" {
+      type master;
+      file "/etc/bind/db.192.168.1";
+  };
+
+Fichier de zone inverse :
+  $TTL 604800
+  @ IN SOA ns1.exemple.com. admin.exemple.com. ( 1 604800 86400 2419200 604800 )
+  @ IN NS ns1.exemple.com.
+  1 IN PTR www.exemple.com.
+
+Le "1" correspond au dernier octet de l'IP 192.168.1.1.
+
+
+--------------------------------------------------------------------------------
+Q31 : Comment verifier la configuration DNS ?
+--------------------------------------------------------------------------------
+R :
+  - Verifier la syntaxe de named.conf :
+      sudo named-checkconf
+      (Pas de sortie = pas d'erreur)
+
+  - Verifier la syntaxe d'un fichier de zone :
+      sudo named-checkzone exemple.com /etc/bind/db.exemple.com
+      (Doit afficher "OK")
+
+  - Redemarrer Bind9 :
+      sudo systemctl restart bind9   (ou named)
+
+  - Tester depuis le client :
+      dig @192.168.1.1 www.exemple.com     (requete DNS directe)
+      nslookup www.exemple.com 192.168.1.1 (meme chose, syntaxe differente)
+
+  - Verifier les logs :
+      sudo tail -f /var/log/syslog | grep named
+
+
+--------------------------------------------------------------------------------
+Q32 : Qu'est-ce que les forwarders dans Bind9 ?
+--------------------------------------------------------------------------------
+R : Les forwarders sont des serveurs DNS externes vers lesquels Bind9 redirige
+les requetes qu'il ne peut pas resoudre lui-meme (domaines hors de ses zones).
+
+Configuration dans /etc/bind/named.conf.options :
+  options {
+      forwarders {
+          8.8.8.8;       // Google DNS
+          8.8.4.4;       // Google DNS secondaire
+      };
+  };
+
+Ainsi, si un client demande www.google.com, Bind9 ne connait pas ce domaine
+et redirige la requete vers 8.8.8.8 qui lui donne la reponse.
+
+
+--------------------------------------------------------------------------------
+Q33 : Comment configurer le client pour utiliser notre serveur DNS ?
+--------------------------------------------------------------------------------
+R : Modifier le fichier /etc/resolv.conf sur le client :
+  nameserver 192.168.1.1    (IP du serveur DNS)
+
+OU ajouter dans /etc/hosts (methode plus simple, sans DNS) :
+  192.168.1.1  www.exemple.com www.exemple1.fr www.exemple2.eu
+
+La difference : /etc/hosts est consulte avant le DNS, c'est une resolution
+locale sans requete reseau. Le DNS est un service reseau qui peut etre
+interroge par n'importe quel client du reseau.
+
+
+--------------------------------------------------------------------------------
+Q34 : Quelle est la difference entre /etc/hosts et un serveur DNS ?
+--------------------------------------------------------------------------------
+R :
+  /etc/hosts :
+    - Fichier local sur chaque machine
+    - Resolution statique (il faut modifier manuellement)
+    - Pas de propagation aux autres machines
+    - Consulte en premier par le systeme
+    - Utile pour les tests et les petits reseaux
+
+  Serveur DNS (Bind9) :
+    - Service centralise sur un serveur
+    - Resolution dynamique (modification a un seul endroit)
+    - Accessible par tous les clients du reseau
+    - Gestion des zones, enregistrements MX, NS, PTR, etc.
+    - Indispensable pour les reseaux de taille moyenne/grande
+
+
+################################################################################
+#                                                                              #
+#                    PARTIE 5 : SGBD (PostgreSQL / MySQL)                      #
+#                                                                              #
+################################################################################
+
+
+--------------------------------------------------------------------------------
+Q35 : Qu'est-ce qu'un SGBD ?
+--------------------------------------------------------------------------------
+R : Un SGBD (Systeme de Gestion de Base de Donnees) est un logiciel qui
+permet de stocker, organiser, gerer et interroger des donnees de maniere
+structuree. Il utilise le langage SQL pour les operations CRUD :
+  - CREATE : creer des tables et bases
+  - READ (SELECT) : lire des donnees
+  - UPDATE : modifier des donnees
+  - DELETE : supprimer des donnees
+
+Exemples de SGBD : PostgreSQL, MySQL/MariaDB, Oracle, SQL Server, SQLite.
+
+
+--------------------------------------------------------------------------------
+Q36 : Pourquoi PostgreSQL (ou MySQL) ? Quelles sont les differences ?
+--------------------------------------------------------------------------------
+R :
+  PostgreSQL :
+    - SGBD relationnel-objet, tres complet et conforme aux standards SQL
+    - Meilleur support des types avances (JSON, arrays, hstore)
+    - Gestion avancee de l'integrite (contraintes, transactions ACID)
+    - Meilleur pour les requetes complexes et les gros volumes
+    - Interface web : phpPgAdmin
+    - Port par defaut : 5432
+
+  MySQL/MariaDB :
+    - SGBD relationnel le plus populaire (Facebook, YouTube, WordPress...)
+    - Plus simple a administrer
+    - Plus rapide pour les lectures simples
+    - MariaDB est le fork open-source de MySQL (par le createur de MySQL)
+    - Interface web : phpMyAdmin
+    - Port par defaut : 3306
+
+Dans notre projet, les scripts utilisent PostgreSQL (pg_connect, pg_query)
+avec phpPgAdmin. MariaDB est aussi installe via install.sh.
+
+
+--------------------------------------------------------------------------------
+Q37 : Comment installer PostgreSQL ?
+--------------------------------------------------------------------------------
+R : sudo aptitude install postgresql postgresql-contrib php-pgsql
+
+  - postgresql         : Le serveur de base de donnees
+  - postgresql-contrib : Extensions supplementaires
+  - php-pgsql          : Module PHP pour se connecter a PostgreSQL
+
+Demarrage :
+  sudo systemctl enable postgresql
+  sudo systemctl start postgresql
+
+
+--------------------------------------------------------------------------------
+Q38 : Comment creer un utilisateur et une base de donnees PostgreSQL ?
+--------------------------------------------------------------------------------
+R :
+  # Se connecter en tant que l'utilisateur postgres (superuser par defaut)
+  sudo -u postgres psql
+
+  # Creer l'utilisateur "exemple" avec le mot de passe "but1"
+  CREATE USER exemple WITH PASSWORD 'but1';
+
+  # Creer la base de donnees "carte_grise" avec exemple comme proprietaire
+  CREATE DATABASE carte_grise OWNER exemple;
+
+  # Donner tous les droits
+  GRANT ALL PRIVILEGES ON DATABASE carte_grise TO exemple;
+
+  # Quitter
+  \q
+
+
+--------------------------------------------------------------------------------
+Q39 : Quelles sont les tables de la base carte_grise ?
+--------------------------------------------------------------------------------
+R : La base contient 3 tables :
+
+  1. proprietaire :
+     - id (SERIAL, cle primaire)
+     - civilite (VARCHAR 5)
+     - nom (VARCHAR 100)
+     - prenom (VARCHAR 100)
+     - email (VARCHAR 200)
+     - adresse (TEXT)
+     - telephone (VARCHAR 20)
+     - date_creation (TIMESTAMP)
+
+  2. vehicule :
+     - id (SERIAL, cle primaire)
+     - proprietaire_id (INTEGER, cle etrangere -> proprietaire.id, ON DELETE CASCADE)
+     - immatriculation (VARCHAR 20, UNIQUE)
+     - marque (VARCHAR 50)
+     - modele (VARCHAR 50)
+     - annee (INTEGER)
+     - date_mise_circulation (DATE)
+     - date_controle_technique (DATE)
+     - document_path (VARCHAR 500, chemin du document uploade)
+     - date_creation (TIMESTAMP)
+
+  3. rappel_envoye :
+     - id (SERIAL, cle primaire)
+     - vehicule_id (INTEGER, cle etrangere -> vehicule.id, ON DELETE CASCADE)
+     - date_envoi (TIMESTAMP)
+     - type_rappel (VARCHAR 50)
+
+La contrainte ON DELETE CASCADE signifie que si on supprime un proprietaire,
+tous ses vehicules sont supprimes automatiquement. De meme si on supprime un
+vehicule, tous ses rappels sont supprimes.
+
+
+--------------------------------------------------------------------------------
+Q40 : Qu'est-ce que phpPgAdmin (ou phpMyAdmin) ?
+--------------------------------------------------------------------------------
+R : phpPgAdmin est une interface web ecrite en PHP qui permet d'administrer
+un serveur PostgreSQL depuis un navigateur web. On peut :
+  - Creer/modifier/supprimer des bases et des tables
+  - Executer des requetes SQL
+  - Importer/exporter des donnees
+  - Gerer les utilisateurs et les droits
+
+Installation : sudo aptitude install phppgadmin
+Acces : http://www.exemple.com/phppgadmin
+
+phpMyAdmin est l'equivalent pour MySQL/MariaDB :
+  sudo aptitude install phpmyadmin
+  Acces : http://www.exemple.com/phpmyadmin
+
+
+--------------------------------------------------------------------------------
+Q41 : Comment se connecter a PostgreSQL en ligne de commande ?
+--------------------------------------------------------------------------------
+R :
+  # Connexion avec l'utilisateur exemple a la base carte_grise
+  psql -U exemple -d carte_grise
+
+  # Si ca echoue (authentification), il faut modifier pg_hba.conf :
+  # /etc/postgresql/XX/main/pg_hba.conf
+  # Changer "peer" en "md5" pour les connexions locales
+  # Puis : sudo systemctl restart postgresql
+
+  # Commandes utiles dans psql :
+  \l        -> lister les bases de donnees
+  \dt       -> lister les tables
+  \d table  -> decrire une table
+  \q        -> quitter
+  SELECT * FROM proprietaire;  -> voir les donnees
+
+
+--------------------------------------------------------------------------------
+Q42 : Qu'est-ce que pg_hba.conf ?
+--------------------------------------------------------------------------------
+R : pg_hba.conf (Host-Based Authentication) est le fichier de configuration
+de PostgreSQL qui controle qui peut se connecter et comment. Il se trouve
+dans /etc/postgresql/<version>/main/pg_hba.conf.
+
+Chaque ligne definit une regle : TYPE  BASE  UTILISATEUR  ADRESSE  METHODE
+
+Methodes d'authentification :
+  - peer    : Utilise l'utilisateur systeme (pas de mot de passe)
+  - md5     : Authentification par mot de passe (hash MD5)
+  - trust   : Pas d'authentification (dangereux en production)
+  - scram-sha-256 : Mot de passe (plus securise que md5)
+
+Pour notre projet, on configure md5 pour permettre la connexion avec mot de
+passe depuis PHP.
+
+
+################################################################################
+#                                                                              #
+#                    PARTIE 6 : PHP                                            #
+#                                                                              #
+################################################################################
+
+
+--------------------------------------------------------------------------------
+Q43 : Qu'est-ce que PHP ?
+--------------------------------------------------------------------------------
+R : PHP (Hypertext Preprocessor) est un langage de programmation cote serveur
+utilise principalement pour le developpement web. Quand un client demande une
+page .php, le serveur Apache execute le code PHP, genere du HTML, et envoie
+le resultat au client. Le client ne voit que le HTML, jamais le code PHP.
+
+Installation : sudo aptitude install php libapache2-mod-php php-pgsql
+  - php               : L'interpreteur PHP
+  - libapache2-mod-php : Module Apache pour executer PHP
+  - php-pgsql          : Extension pour se connecter a PostgreSQL
+
+
+--------------------------------------------------------------------------------
+Q44 : Comment PHP se connecte a PostgreSQL dans notre projet ?
+--------------------------------------------------------------------------------
+R : Via le fichier db.php qui contient la fonction getConnection() :
+
+  function getConnection() {
+      $conn = pg_connect("host=localhost dbname=carte_grise user=exemple password=but1");
+      if (!$conn) {
+          die("Erreur de connexion a la base de donnees.");
+      }
+      return $conn;
+  }
+
+  - pg_connect()    : Ouvre une connexion PostgreSQL
+  - pg_query()      : Execute une requete SQL
+  - pg_query_params() : Execute une requete parametree (protection SQL injection)
+  - pg_fetch_assoc(): Recupere une ligne de resultat en tableau associatif
+  - pg_num_rows()   : Nombre de lignes retournees
+  - pg_close()      : Ferme la connexion
+
+
+--------------------------------------------------------------------------------
+Q45 : Qu'est-ce qu'une injection SQL ? Comment s'en proteger ?
+--------------------------------------------------------------------------------
+R : Une injection SQL est une attaque ou un utilisateur malveillant insere
+du code SQL dans un formulaire pour manipuler la base de donnees.
+
+Exemple d'attaque :
+  Champ nom : ' OR 1=1; DROP TABLE proprietaire; --
+  Si le code fait : "SELECT * FROM proprietaire WHERE nom = '$nom'"
+  Ca devient : SELECT * FROM proprietaire WHERE nom = '' OR 1=1; DROP TABLE...
+
+Protection dans notre code : on utilise pg_query_params() avec des
+parametres numerotes ($1, $2, $3...) :
+  pg_query_params($conn,
+      "INSERT INTO proprietaire (nom, prenom, email) VALUES ($1, $2, $3)",
+      array($nom, $prenom, $email));
+
+Les valeurs sont echappees automatiquement, impossible d'injecter du SQL.
+On utilise aussi htmlspecialchars() pour l'affichage (protection XSS).
+
+
+--------------------------------------------------------------------------------
+Q46 : Quelles sont les pages PHP de l'application carte grise ?
+--------------------------------------------------------------------------------
+R : L'application comprend les fichiers suivants :
+
+  db.php                      -> Connexion a la base de donnees
+  style.php                   -> Template HTML/CSS commun (navbar, footer)
+  index.php                   -> Tableau de bord (statistiques, CT a venir)
+  proprietaires.php           -> Liste des proprietaires (avec recherche)
+  vehicules.php               -> Liste des vehicules (avec recherche)
+  ajouter_proprietaire.php    -> Formulaire d'ajout d'un proprietaire (INSERT)
+  ajouter_vehicule.php        -> Formulaire d'ajout d'un vehicule (INSERT)
+  modifier_proprietaire.php   -> Formulaire de modification (UPDATE)
+  modifier_vehicule.php       -> Formulaire de modification (UPDATE)
+  supprimer.php               -> Suppression generique (DELETE)
+  upload.php                  -> Upload de documents (carte grise PDF/image)
+  mail.php                    -> Interface d'envoi de rappels mail + config cron
+  cron_mail.php               -> Script appele par cron pour envoi automatique
+
+
+--------------------------------------------------------------------------------
+Q47 : Comment fonctionne l'upload de fichiers en PHP ?
+--------------------------------------------------------------------------------
+R : L'upload utilise un formulaire HTML avec enctype="multipart/form-data"
+et un champ <input type="file">.
+
+Cote serveur (upload.php), le fichier est dans $_FILES['document'] :
+  - $_FILES['document']['name']     : Nom original du fichier
+  - $_FILES['document']['tmp_name'] : Chemin temporaire sur le serveur
+  - $_FILES['document']['error']    : Code d'erreur (0 = OK)
+  - $_FILES['document']['size']     : Taille en octets
+
+Securite implementee :
+  1. Verification de l'extension (seuls pdf, jpg, jpeg, png, gif autorises)
+  2. Renommage du fichier (carte_grise_<id>_<timestamp>.<ext>)
+  3. Deplacement avec move_uploaded_file() (fonction securisee)
+  4. Stockage du chemin en base de donnees
+
+Config PHP (php.ini) :
+  upload_max_filesize = 10M   (taille max d'un fichier)
+  post_max_size = 12M         (taille max d'un POST)
+
+
+--------------------------------------------------------------------------------
+Q48 : Qu'est-ce que la variable $_SERVER['REQUEST_METHOD'] ?
+--------------------------------------------------------------------------------
+R : C'est une variable superglobale PHP qui contient la methode HTTP utilisee
+pour la requete en cours. Les valeurs courantes sont :
+  - "GET"  : Requete de lecture (affichage d'une page, clic sur un lien)
+  - "POST" : Requete d'ecriture (soumission d'un formulaire)
+
+Dans notre code, on l'utilise pour distinguer l'affichage du formulaire
+(GET) du traitement des donnees soumises (POST) :
+  if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+      // Traiter le formulaire
+  }
+
+
+--------------------------------------------------------------------------------
+Q49 : Que fait htmlspecialchars() et pourquoi l'utiliser ?
+--------------------------------------------------------------------------------
+R : htmlspecialchars() convertit les caracteres speciaux HTML en entites :
+  & -> &amp;
+  < -> &lt;
+  > -> &gt;
+  " -> &quot;
+  ' -> &#039;
+
+C'est une protection contre les attaques XSS (Cross-Site Scripting). Sans
+cette fonction, un utilisateur pourrait injecter du JavaScript malveillant
+dans un formulaire :
+  Nom : <script>alert('Hacke!')</script>
+
+Avec htmlspecialchars(), ca s'affiche comme du texte au lieu de s'executer.
+
+
+################################################################################
+#                                                                              #
+#                    PARTIE 7 : SERVICE MAIL (POSTFIX + DOVECOT)               #
+#                                                                              #
+################################################################################
+
+
+--------------------------------------------------------------------------------
+Q50 : Qu'est-ce que Postfix ?
+--------------------------------------------------------------------------------
+R : Postfix est un serveur de messagerie (MTA - Mail Transfer Agent) qui
+gere l'envoi et la reception des emails via le protocole SMTP (Simple Mail
+Transfer Protocol) sur le port 25.
+
+Quand un email est envoye, Postfix :
+  1. Recoit le mail du client (Thunderbird, PHP mail(), etc.)
+  2. Determine le serveur de destination via les enregistrements MX du DNS
+  3. Envoie le mail au serveur destinataire
+
+Installation : sudo aptitude install postfix
+Type de configuration : "Internet Site" (envoi/reception directe)
+
+Alternatives : Sendmail (plus ancien, plus complexe), Exim, qmail.
+
+
+--------------------------------------------------------------------------------
+Q51 : Qu'est-ce que Dovecot ?
+--------------------------------------------------------------------------------
+R : Dovecot est un serveur IMAP/POP3 (MDA - Mail Delivery Agent) qui permet
+aux clients mail (Thunderbird) de consulter les emails stockes sur le serveur.
+
+  - IMAP (port 143) : Les mails restent sur le serveur. Le client les lit
+    a distance. Synchronisation entre plusieurs appareils.
+  - POP3 (port 110) : Les mails sont telecharges sur le client et supprimes
+    du serveur (par defaut). Pas de synchronisation.
+
+Installation : sudo aptitude install dovecot-core dovecot-imapd dovecot-pop3d
+
+Configuration mail_location dans /etc/dovecot/conf.d/10-mail.conf :
+  mail_location = maildir:~/Maildir
+  -> Les mails sont stockes dans le repertoire ~/Maildir de chaque utilisateur.
+
+
+--------------------------------------------------------------------------------
+Q52 : Quelle est la difference entre SMTP, IMAP et POP3 ?
+--------------------------------------------------------------------------------
+R :
+  SMTP (port 25) : Protocole d'ENVOI de mail.
+    Client -> Serveur SMTP -> Serveur SMTP destinataire
+    Utilise par Postfix.
+
+  IMAP (port 143) : Protocole de LECTURE de mail (les mails restent sur le
+    serveur). Permet la synchronisation multi-appareils.
+    Utilise par Dovecot. Protocole recommande.
+
+  POP3 (port 110) : Protocole de LECTURE de mail (les mails sont telecharges
+    et supprimes du serveur). Pas de synchronisation.
+    Utilise par Dovecot. Moins utilise aujourd'hui.
+
+En resume : SMTP pour envoyer, IMAP/POP3 pour recevoir/lire.
+
+
+--------------------------------------------------------------------------------
+Q53 : Comment configurer Postfix pour plusieurs domaines ?
+--------------------------------------------------------------------------------
+R : Dans /etc/postfix/main.cf, configurer mydestination :
+
+  myhostname = exemple.com
+  mydestination = exemple.com, exemple1.fr, exemple2.eu, localhost
+
+Cela indique a Postfix qu'il doit accepter les mails destines a ces 3
+domaines. Il faut aussi configurer :
+  home_mailbox = Maildir/    -> Stockage en format Maildir dans le home
+
+Les alias mail sont dans /etc/aliases :
+  contact: exemple
+  -> Les mails envoyes a contact@domaine sont rediriges vers l'utilisateur
+     systeme "exemple"
+
+Apres modification : sudo newaliases && sudo systemctl restart postfix
+
+
+--------------------------------------------------------------------------------
+Q54 : Qu'est-ce que le format Maildir ?
+--------------------------------------------------------------------------------
+R : Maildir est un format de stockage des emails ou chaque mail est un
+fichier individuel dans une arborescence de repertoires :
+  ~/Maildir/
+    new/     -> Nouveaux mails non lus
+    cur/     -> Mails lus
+    tmp/     -> Mails en cours de reception
+
+Avantages par rapport a mbox (un seul gros fichier) :
+  - Pas de verrouillage necessaire (chaque mail = un fichier)
+  - Plus fiable (pas de corruption du fichier unique)
+  - Meilleures performances
+  - Compatible avec IMAP
+
+
+--------------------------------------------------------------------------------
+Q55 : Comment configurer Thunderbird pour se connecter au serveur mail ?
+--------------------------------------------------------------------------------
+R : Configuration dans Thunderbird :
+  - Nom complet : Contact Exemple
+  - Adresse email : contact@exemple.com
+
+  Serveur entrant (IMAP) :
+    - Protocole : IMAP
+    - Serveur : 192.168.1.1 (IP du serveur)
+    - Port : 143
+    - Securite : Aucune (ou STARTTLS si configure)
+    - Authentification : Mot de passe normal
+
+  Serveur sortant (SMTP) :
+    - Serveur : 192.168.1.1
+    - Port : 25
+    - Securite : Aucune
+    - Authentification : Mot de passe normal
+
+  Utilisateur : exemple
+  Mot de passe : but1
+
+Le script setup_thunderbird.sh automatise cette configuration en ecrivant
+directement dans le fichier prefs.js du profil Thunderbird.
+
+
+--------------------------------------------------------------------------------
+Q56 : Comment tester l'envoi d'un mail en ligne de commande ?
+--------------------------------------------------------------------------------
+R : Avec netcat (nc) ou telnet :
+
+  echo -e "EHLO client\nMAIL FROM:<test@exemple.com>\nRCPT TO:<contact@exemple.com>\nDATA\nSubject: Test\n\nCeci est un test.\n.\nQUIT" | nc 192.168.1.1 25
+
+Ou avec la commande mail :
+  echo "Ceci est un test" | mail -s "Test" contact@exemple.com
+
+Ou avec sendmail :
+  echo "Subject: Test" | sendmail contact@exemple.com
+
+Pour verifier la reception :
+  ls ~/Maildir/new/    (les nouveaux mails apparaissent ici)
+
+
+################################################################################
+#                                                                              #
+#                    PARTIE 8 : SFTP / SSH                                     #
+#                                                                              #
+################################################################################
+
+
+--------------------------------------------------------------------------------
+Q57 : Qu'est-ce que SSH et SFTP ?
+--------------------------------------------------------------------------------
+R :
+  SSH (Secure Shell, port 22) : Protocole de connexion a distance securisee.
+    Permet d'executer des commandes sur un serveur distant via un terminal
+    chiffre. Remplace Telnet (non chiffre).
+    Commande : ssh exemple@192.168.1.1
+
+  SFTP (SSH File Transfer Protocol, port 22) : Protocole de transfert de
+    fichiers securise qui fonctionne par-dessus SSH. Les fichiers sont
+    chiffres pendant le transfert.
+    Commande : sftp exemple@192.168.1.1
+    Client graphique : FileZilla
+
+  Difference avec FTP : FTP (port 21) n'est PAS chiffre (mot de passe et
+  fichiers en clair). SFTP est toujours recommande.
+
+
+--------------------------------------------------------------------------------
+Q58 : Comment installer et configurer OpenSSH ?
+--------------------------------------------------------------------------------
+R : Sur le serveur :
+  sudo aptitude install openssh-server
+  sudo systemctl enable ssh
+  sudo systemctl start ssh
+
+Configuration : /etc/ssh/sshd_config
+  - Port 22                    (port par defaut)
+  - PermitRootLogin no         (securite : pas de connexion root directe)
+  - PasswordAuthentication yes (connexion par mot de passe)
+  - Subsystem sftp /usr/lib/openssh/sftp-server  (active SFTP)
+
+Sur le client :
+  sudo aptitude install openssh-client  (generalement deja installe)
+
+
+--------------------------------------------------------------------------------
+Q59 : Comment configurer FileZilla pour se connecter en SFTP ?
+--------------------------------------------------------------------------------
+R : Dans FileZilla :
+  - Hote : sftp://192.168.1.1  (ou juste l'IP + choisir SFTP)
+  - Port : 22
+  - Type de connexion : SFTP
+  - Utilisateur : exemple
+  - Mot de passe : but1
+
+Cela permet de naviguer dans les fichiers du serveur, d'uploader et de
+telecharger des fichiers de maniere securisee.
+
+
+################################################################################
+#                                                                              #
+#                    PARTIE 9 : CRON (TACHES PLANIFIEES)                       #
+#                                                                              #
+################################################################################
+
+
+--------------------------------------------------------------------------------
+Q60 : Qu'est-ce que cron ?
+--------------------------------------------------------------------------------
+R : Cron est le planificateur de taches de Linux. Il permet d'executer des
+commandes ou scripts automatiquement a des heures/dates precises.
+
+Configuration : crontab -e  (editer la crontab de l'utilisateur courant)
+Lister : crontab -l
+
+Format d'une ligne cron :
+  minute heure jour_du_mois mois jour_de_la_semaine commande
+
+  *     = toutes les valeurs
+  */5   = toutes les 5 unites
+  1,15  = aux valeurs 1 et 15
+
+Exemples :
+  0 3 * * *   -> Tous les jours a 3h00
+  */15 * * * * -> Toutes les 15 minutes
+  0 0 1 * *   -> Le 1er de chaque mois a minuit
+  30 8 * * 1  -> Chaque lundi a 8h30
+
+
+--------------------------------------------------------------------------------
+Q61 : Comment fonctionne le cron de rappel mail dans le projet ?
+--------------------------------------------------------------------------------
+R : Le cron est configure pour executer cron_mail.php tous les jours a 3h :
+
+  0 3 * * * php /users/firms/exemple/www/cron_mail.php >> /var/log/carte_grise_mail.log 2>&1
+
+Le script cron_mail.php :
+  1. Se connecte a PostgreSQL
+  2. Recherche les vehicules dont le CT est dans les 30 prochains jours
+  3. Exclut les vehicules deja rappeles dans les 7 derniers jours
+     (pour eviter le spam)
+  4. Envoie un mail a chaque proprietaire concerne
+  5. Enregistre chaque envoi dans la table rappel_envoye
+  6. Log le resultat dans /var/log/carte_grise_mail.log
+
+L'interface mail.php permet aussi :
+  - D'envoyer les rappels manuellement (bouton)
+  - De changer l'heure du cron via un formulaire
+  - De voir l'historique des rappels envoyes
+
+
+################################################################################
+#                                                                              #
+#                    PARTIE 10 : SCRIPTS DU PROJET                             #
+#                                                                              #
+################################################################################
+
+
+--------------------------------------------------------------------------------
+Q62 : A quoi sert le script install.sh ?
+--------------------------------------------------------------------------------
+R : install.sh est le script principal d'installation du SERVEUR. Il :
+  1. Met a jour le systeme (apt-get update && upgrade)
+  2. Installe aptitude
+  3. Installe Apache2 et active les modules (ssl, rewrite, userdir)
+  4. Genere le certificat SSL auto-signe
+  5. Installe PHP et ses extensions (php-mysql, php-pgsql)
+  6. Installe MariaDB et cree l'utilisateur "exemple" (mdp: but1)
+  7. Installe phpMyAdmin
+  8. Installe Bind9 et configure les 3 zones DNS
+  9. Installe Postfix et Dovecot (serveur mail)
+  10. Installe OpenSSH (SFTP)
+  11. Cree l'utilisateur systeme "exemple" et l'arborescence /users/firms/exemple/www/
+  12. Configure les VirtualHosts Apache (HTTP + HTTPS) pour les 3 domaines
+  13. Configure les fichiers de zone DNS
+  14. Redemarre tous les services
+
+Variables cles :
+  DOMAIN="exemple.com"
+  DOMAIN2="exemple1.fr"
+  DOMAIN3="exemple2.eu"
+  USER="exemple"
+  DB_PASS="but1"
+  SERVER_IP="10.0.2.15"
+
+
+--------------------------------------------------------------------------------
+Q63 : A quoi sert config_server.sh ?
+--------------------------------------------------------------------------------
+R : config_server.sh est un script de VERIFICATION et CORRECTION automatique.
+Il parcourt chaque composant du serveur, verifie s'il est correctement
+configure et corrige les problemes trouves :
+  1. Verifie que tous les paquets sont installes
+  2. Verifie l'utilisateur "exemple" et son home directory
+  3. Verifie le certificat SSL (non expire)
+  4. Verifie les modules Apache
+  5. Verifie les VirtualHosts (HTTP et HTTPS)
+  6. Verifie PostgreSQL (utilisateur, connexion)
+  7. Verifie phpPgAdmin (acces distant autorise)
+  8. Verifie Bind9 (zones, syntaxe)
+  9. Verifie Postfix (mydestination, home_mailbox)
+  10. Verifie Dovecot (mail_location, protocoles)
+  11. Verifie OpenSSH (SFTP actif)
+  12. Verifie les alias mail
+  13. Verifie les ports en ecoute (22, 25, 53, 80, 143, 443, 5432)
+
+Affiche [OK] / [FIX] / [FAIL] pour chaque verification.
+
+
+--------------------------------------------------------------------------------
+Q64 : A quoi sert create_php.sh ?
+--------------------------------------------------------------------------------
+R : create_php.sh cree toute l'application PHP carte grise :
+  1. Installe PostgreSQL et php-pgsql
+  2. Cree la base "carte_grise" et les tables (proprietaire, vehicule, rappel_envoye)
+  3. Insere des donnees de test (2 proprietaires, 2 vehicules)
+  4. Cree tous les fichiers PHP (db.php, style.php, index.php, proprietaires.php,
+     vehicules.php, ajouter_proprietaire.php, ajouter_vehicule.php,
+     modifier_proprietaire.php, modifier_vehicule.php, supprimer.php,
+     upload.php, mail.php, cron_mail.php)
+  5. Configure les droits et permissions
+  6. Configure PHP pour l'upload (upload_max_filesize=10M)
+  7. Configure le cron automatique (3h du matin)
+  8. Redemarre Apache
+
+
+--------------------------------------------------------------------------------
+Q65 : A quoi sert start_server.sh ?
+--------------------------------------------------------------------------------
+R : start_server.sh est un script de demarrage et de diagnostic. Il :
+  1. Demarre tous les services (Apache, PostgreSQL, Bind9, SSH, Postfix, Dovecot)
+  2. Affiche les ports en ecoute (22, 25, 53, 80, 143, 443, 5432)
+  3. Affiche les informations reseau (IP, passerelle, DNS)
+  4. Affiche les sites web configures (HTTP et HTTPS)
+  5. Teste la resolution DNS pour chaque domaine
+  6. Affiche les informations mail (SMTP, IMAP, boites mail)
+  7. Affiche les informations SSH/SFTP et la config FileZilla
+  8. Affiche les informations PostgreSQL (base, tables)
+  9. Affiche les infos systeme (uptime, RAM, disque)
+
+C'est un "dashboard" textuel pour avoir une vue d'ensemble du serveur.
+
+
+--------------------------------------------------------------------------------
+Q66 : A quoi servent install_client.sh et configure_client.sh ?
+--------------------------------------------------------------------------------
+R :
+  install_client.sh : Installe tous les logiciels sur le PC client :
+    - Firefox (navigateur)
+    - Thunderbird (client mail)
+    - FileZilla (client SFTP)
+    - OpenSSH client
+    - Eclipse + JDK (IDE Java)
+    - Code::Blocks + nasm + gcc (C/assembleur)
+    - Apache2 + MariaDB + PHP + phpMyAdmin (LAMP)
+    - LibreOffice (suite bureautique)
+    - Evince (lecteur PDF)
+    - dnsutils (dig, nslookup)
+    - curl, wget, net-tools, traceroute
+    - nano, vim (editeurs)
+    Configure aussi /etc/hosts pour les 3 domaines.
+
+  configure_client.sh : Verifie et teste la connexion au serveur :
+    1. Verifie que les paquets sont installes
+    2. Verifie /etc/hosts
+    3. Teste la resolution DNS pour chaque domaine
+    4. Teste la connectivite (ping + ports 22, 25, 53, 80, 143, 443)
+    5. Teste l'acces HTTP et HTTPS pour chaque domaine
+    6. Verifie le certificat SSL
+    7. Teste SFTP
+    8. Teste DNS via dig (enregistrements A et MX)
+    9. Teste SMTP (port 25) et IMAP (port 143)
+
+
+--------------------------------------------------------------------------------
+Q67 : A quoi sert setup_thunderbird.sh ?
+--------------------------------------------------------------------------------
+R : Ce script configure automatiquement Thunderbird sur le client en ecrivant
+directement dans le fichier prefs.js du profil Thunderbird. Il cree 3 comptes
+mail :
+  - contact@exemple.com
+  - contact@exemple1.fr
+  - contact@exemple2.eu
+
+Pour chaque compte, il configure :
+  - L'identite (nom, email)
+  - Le serveur IMAP (192.168.1.1:143)
+  - Le serveur SMTP (192.168.1.1:25)
+  - L'utilisateur (exemple) et la methode d'authentification
+
+Il effectue aussi un test d'envoi de mail via netcat.
+
+
+################################################################################
+#                                                                              #
+#                    PARTIE 11 : COMMANDES LINUX ESSENTIELLES                  #
+#                                                                              #
+################################################################################
+
+
+--------------------------------------------------------------------------------
+Q68 : Quelles sont les commandes de gestion des services (systemctl) ?
+--------------------------------------------------------------------------------
+R :
+  sudo systemctl start <service>     -> Demarrer un service
+  sudo systemctl stop <service>      -> Arreter un service
+  sudo systemctl restart <service>   -> Redemarrer un service
+  sudo systemctl reload <service>    -> Recharger la config sans redemarrer
+  sudo systemctl status <service>    -> Voir le statut d'un service
+  sudo systemctl enable <service>    -> Activer au demarrage
+  sudo systemctl disable <service>   -> Desactiver au demarrage
+  sudo systemctl is-active <service> -> Verifier si actif (retourne "active")
+  sudo systemctl is-enabled <service>-> Verifier si active au boot
+
+Services du projet :
+  apache2, postgresql (ou mariadb), named (ou bind9), postfix, dovecot, ssh
+
+
+--------------------------------------------------------------------------------
+Q69 : Quelles sont les commandes reseau utiles ?
+--------------------------------------------------------------------------------
+R :
+  ip addr                -> Voir les adresses IP
+  ip route               -> Voir la table de routage
+  ping <IP/nom>          -> Tester la connectivite
+  ss -tlnp               -> Voir les ports en ecoute (remplace netstat)
+  dig @serveur nom       -> Requete DNS
+  nslookup nom serveur   -> Requete DNS (plus ancien)
+  curl http://url        -> Requete HTTP en ligne de commande
+  traceroute <IP>        -> Tracer la route des paquets
+  hostname -I            -> Voir les IPs de la machine
+  cat /etc/resolv.conf   -> Voir le DNS configure
+
+
+--------------------------------------------------------------------------------
+Q70 : Quelles commandes pour gerer les utilisateurs Linux ?
+--------------------------------------------------------------------------------
+R :
+  sudo adduser exemple            -> Creer un utilisateur (interactif)
+  sudo useradd -m -d /home/ex ex  -> Creer un utilisateur (non interactif)
+  sudo passwd exemple             -> Changer le mot de passe
+  sudo usermod -d /new/home ex    -> Changer le home directory
+  sudo userdel -r exemple         -> Supprimer un utilisateur et son home
+  id exemple                      -> Voir les infos de l'utilisateur
+  echo "user:pass" | sudo chpasswd -> Changer le mot de passe en script
+
+Droits sur les fichiers :
+  chown user:group fichier    -> Changer le proprietaire
+  chmod 755 fichier           -> Changer les permissions
+    7 = rwx (lecture+ecriture+execution) pour le proprietaire
+    5 = r-x (lecture+execution) pour le groupe
+    5 = r-x (lecture+execution) pour les autres
+
+
+################################################################################
+#                                                                              #
+#                    PARTIE 12 : SECURITE                                      #
+#                                                                              #
+################################################################################
+
+
+--------------------------------------------------------------------------------
+Q71 : Quelles mesures de securite sont mises en place ?
+--------------------------------------------------------------------------------
+R :
+  1. HTTPS avec certificat SSL : Chiffrement des communications web
+  2. Requetes parametrees (pg_query_params) : Protection SQL injection
+  3. htmlspecialchars() : Protection XSS
+  4. Verification des extensions d'upload : Seuls pdf, jpg, png, gif autorises
+  5. SFTP au lieu de FTP : Transfert de fichiers chiffre
+  6. Pas de connexion root en SSH (recommande)
+  7. Mots de passe pour PostgreSQL et les utilisateurs systeme
+  8. Authentification md5 pour PostgreSQL
+
+Ameliorations possibles :
+  - Let's Encrypt pour des certificats valides
+  - Fail2ban pour bloquer les tentatives de brute-force
+  - Firewall (ufw/iptables) pour limiter les ports accessibles
+  - STARTTLS pour le mail (chiffrement SMTP/IMAP)
+  - Rate limiting sur Apache
+  - Mots de passe plus forts
+
+
+--------------------------------------------------------------------------------
+Q72 : Qu'est-ce que le XSS (Cross-Site Scripting) ?
+--------------------------------------------------------------------------------
+R : Le XSS est une attaque ou un attaquant injecte du code JavaScript
+malveillant dans une page web via un formulaire ou une URL. Quand un autre
+utilisateur visite la page, le script s'execute dans son navigateur et peut :
+  - Voler ses cookies de session
+  - Rediriger vers un site malveillant
+  - Modifier le contenu de la page
+
+Protection : htmlspecialchars() convertit les caracteres speciaux (<, >, ", ')
+en entites HTML inoffensives.
+
+
+################################################################################
+#                                                                              #
+#                    PARTIE 13 : ARCHITECTURE & CONCEPTS RESEAU                #
+#                                                                              #
+################################################################################
+
+
+--------------------------------------------------------------------------------
+Q73 : Qu'est-ce que le modele client-serveur ?
+--------------------------------------------------------------------------------
+R : Le modele client-serveur est une architecture ou :
+  - Le SERVEUR fournit des services (pages web, mail, DNS, BDD...)
+  - Le CLIENT consomme ces services (navigateur, Thunderbird, FileZilla...)
+
+Le client envoie une requete, le serveur la traite et renvoie une reponse.
+Dans notre SAE :
+  - VM Serveur : Apache, PostgreSQL, Bind9, Postfix, Dovecot, SSH
+  - VM Client  : Firefox, Thunderbird, FileZilla, dig/nslookup
+
+
+--------------------------------------------------------------------------------
+Q74 : Quels sont les principaux ports utilises dans le projet ?
+--------------------------------------------------------------------------------
+R :
+  Port 22   : SSH / SFTP        (connexion securisee / transfert de fichiers)
+  Port 25   : SMTP (Postfix)    (envoi de mails)
+  Port 53   : DNS (Bind9)       (resolution de noms)
+  Port 80   : HTTP (Apache)     (pages web non chiffrees)
+  Port 110  : POP3 (Dovecot)    (reception de mails, download)
+  Port 143  : IMAP (Dovecot)    (reception de mails, synchronise)
+  Port 443  : HTTPS (Apache)    (pages web chiffrees)
+  Port 5432 : PostgreSQL        (base de donnees)
+  Port 3306 : MySQL/MariaDB     (base de donnees alternative)
+
+
+--------------------------------------------------------------------------------
+Q75 : Qu'est-ce qu'un protocole ? Citer les protocoles du projet.
+--------------------------------------------------------------------------------
+R : Un protocole est un ensemble de regles qui definissent comment les
+donnees sont echangees entre deux machines sur un reseau.
+
+Protocoles du projet :
+  - HTTP/HTTPS : Echange de pages web (couche application)
+  - DNS        : Resolution de noms de domaine
+  - SMTP       : Envoi de mails
+  - IMAP/POP3  : Lecture de mails
+  - SSH/SFTP   : Connexion securisee et transfert de fichiers
+  - TCP/IP     : Transport et adressage des paquets
+  - SSL/TLS    : Chiffrement des communications
+  - SQL        : Requetes de base de donnees (pas un protocole reseau
+                 mais un langage de requetage)
+
+
+--------------------------------------------------------------------------------
+Q76 : Qu'est-ce que le TTL dans un enregistrement DNS ?
+--------------------------------------------------------------------------------
+R : TTL (Time To Live) est la duree (en secondes) pendant laquelle un
+enregistrement DNS peut etre mis en cache par les serveurs et clients DNS.
+Apres expiration, ils doivent refaire une requete au serveur autoritaire.
+
+  $TTL 604800    -> 7 jours (valeur par defaut de nos zones)
+
+  TTL court (300s = 5 min) : Utile si les IP changent souvent
+  TTL long (86400s = 1 jour) : Reduit la charge du serveur DNS
+
+
+--------------------------------------------------------------------------------
+Q77 : Comment fonctionne une requete DNS de bout en bout ?
+--------------------------------------------------------------------------------
+R : Quand le client tape www.exemple.com dans Firefox :
+  1. Le navigateur verifie son cache DNS local
+  2. Si absent, il interroge le resolveur configure (/etc/resolv.conf)
+  3. Le resolveur (notre serveur Bind9) cherche dans ses zones locales
+  4. S'il trouve la zone "exemple.com", il repond directement avec l'IP
+     (192.168.1.1) car c'est un serveur autoritaire pour cette zone
+  5. S'il ne connait pas le domaine, il utilise les forwarders (8.8.8.8)
+  6. Le navigateur recoit l'IP et ouvre une connexion TCP vers cette IP
+
+Si on utilise /etc/hosts au lieu du DNS, l'etape 1 resout directement le nom
+sans passer par aucun serveur DNS.
+
+
+################################################################################
+#                                                                              #
+#                    PARTIE 14 : AUTOMATISATION (BONUS)                        #
+#                                                                              #
+################################################################################
+
+
+--------------------------------------------------------------------------------
+Q78 : Comment automatiser l'ajout d'un nouveau domaine ?
+--------------------------------------------------------------------------------
+R : Un script d'automatisation doit :
+  1. Creer le VirtualHost Apache (HTTP + HTTPS)
+  2. Generer un certificat SSL pour le nouveau domaine
+  3. Creer le fichier de zone DNS dans Bind9
+  4. Declarer la zone dans named.conf.local
+  5. Ajouter le domaine dans mydestination de Postfix
+  6. Creer la boite mail (alias)
+  7. Creer une page par defaut
+  8. Redemarrer tous les services concernes
+
+Le script prendrait en parametre le nom de domaine :
+  ./ajouter_domaine.sh monsite.org
+
+
+################################################################################
+#                                                                              #
+#                    PARTIE 15 : RAPPORT                                       #
+#                                                                              #
+################################################################################
+
+
+--------------------------------------------------------------------------------
+Q79 : Que doit contenir le rapport de la SAE ?
+--------------------------------------------------------------------------------
+R : Le rapport fait ~15 pages et contient :
+
+  1. Introduction : Contexte (SAE 203, IUT Nice, BUT 1), objectifs (installer
+     des services reseau sur des VM), technologies utilisees.
+
+  2. Cahier des charges :
+     - Planning des taches (diagramme de Gantt ou tableau)
+     - Repartition du travail par membre du groupe
+     - Description des taches prevues
+
+  3. Partie technique :
+     - Etude de l'existant (comparaison des technologies alternatives)
+     - Detail des installations et configurations
+     - Schemas reseau et captures d'ecran (numerotes et titres)
+     - Explication des choix techniques
+
+  4. Bilan :
+     - Recapitulatif par rapport au planning prevu
+     - Taches terminees et taches restantes
+     - Ameliorations et perspectives futures
+
+  5. Conclusion : Resume technique du travail effectue, perspectives.
+
+  6. Annexes : Code commente, fiches techniques detaillees.
+
+  7. Sommaire avec numeros de page, pages numerotees, glossaire.
+
+IMPORTANT : Pas de notes personnelles ("ce travail m'a ete utile...").
+Le rapport doit etre technique et permettre a quelqu'un de reprendre le
+travail.
+
+
+--------------------------------------------------------------------------------
+Q80 : Quelles sont les technologies alternatives a comparer dans l'etude de l'existant ?
+--------------------------------------------------------------------------------
+R :
+  Serveur web :
+    Apache2 vs Nginx vs Lighttpd vs Caddy vs IIS
+
+  SGBD :
+    PostgreSQL vs MySQL/MariaDB vs SQLite vs Oracle vs SQL Server
+
+  DNS :
+    Bind9 vs PowerDNS vs Unbound vs dnsmasq vs CoreDNS
+
+  Mail :
+    Postfix vs Sendmail vs Exim vs qmail
+    Dovecot vs Courier vs Cyrus
+
+  Virtualisation :
+    VirtualBox vs VMware vs Hyper-V vs KVM vs QEMU
+
+  OS Serveur :
+    Debian vs Ubuntu Server vs CentOS/Rocky vs Alpine
+
+  Certificat SSL :
+    Auto-signe vs Let's Encrypt vs CA commerciale
+
+  Transfert fichiers :
+    SFTP (SSH) vs FTPS vs SCP vs rsync
+
+
+################################################################################
+#                                                                              #
+#                    PARTIE 16 : QUESTIONS PIEGES / AVANCEES                   #
+#                                                                              #
+################################################################################
+
+
+--------------------------------------------------------------------------------
+Q81 : Pourquoi le navigateur affiche "Connexion non securisee" malgre HTTPS ?
+--------------------------------------------------------------------------------
+R : Parce que le certificat est auto-signe. Le navigateur ne peut pas verifier
+l'identite du serveur aupres d'une autorite de certification (CA) reconnue.
+Le chiffrement fonctionne quand meme, mais l'identite n'est pas garantie.
+Solution : utiliser un certificat Let's Encrypt (gratuit) ou une CA reconnue.
+
+
+--------------------------------------------------------------------------------
+Q82 : Que se passe-t-il si on supprime un proprietaire qui a des vehicules ?
+--------------------------------------------------------------------------------
+R : Grace a la contrainte ON DELETE CASCADE sur la cle etrangere
+"proprietaire_id" dans la table vehicule, la suppression d'un proprietaire
+entraine automatiquement la suppression de tous ses vehicules (et par cascade,
+de tous les rappels envoyes lies a ces vehicules). C'est gere directement par
+PostgreSQL, pas par le code PHP.
+
+
+--------------------------------------------------------------------------------
+Q83 : Pourquoi utiliser pg_query_params() au lieu de pg_query() ?
+--------------------------------------------------------------------------------
+R : pg_query_params() separe la requete SQL des donnees utilisateur, ce qui
+empeche les injections SQL. Les donnees sont "echappees" automatiquement.
+
+Dangereux :
+  pg_query("SELECT * FROM t WHERE nom = '$_POST[nom]'");
+  -> Un utilisateur peut injecter du SQL via le champ nom
+
+Securise :
+  pg_query_params($conn, "SELECT * FROM t WHERE nom = $1", array($_POST['nom']));
+  -> La valeur est traitee comme une donnee, pas comme du SQL
+
+
+--------------------------------------------------------------------------------
+Q84 : Pourquoi Postfix et pas Sendmail ?
+--------------------------------------------------------------------------------
+R : Postfix est plus moderne, plus facile a configurer, plus securise et
+plus performant que Sendmail. Sendmail est plus ancien (1983), a une
+configuration complexe (fichier sendmail.cf) et a eu de nombreuses
+vulnerabilites de securite. Postfix a ete concu comme un remplacement
+securise de Sendmail par Wietse Venema en 1998.
+
+
+--------------------------------------------------------------------------------
+Q85 : Quelle est la difference entre a2ensite et un lien symbolique ?
+--------------------------------------------------------------------------------
+R : a2ensite cree un lien symbolique de sites-available/ vers sites-enabled/.
+C'est juste un raccourci pratique. Les deux commandes suivantes sont
+equivalentes :
+  sudo a2ensite exemple.com.conf
+  sudo ln -s /etc/apache2/sites-available/exemple.com.conf /etc/apache2/sites-enabled/
+
+De meme, a2dissite supprime le lien symbolique (pas le fichier original).
+
+
+--------------------------------------------------------------------------------
+Q86 : Comment verifier qu'Apache ecoute bien sur les ports 80 et 443 ?
+--------------------------------------------------------------------------------
+R :
+  sudo ss -tlnp | grep apache     (ou grep :80 et grep :443)
+  sudo lsof -i :80
+  sudo lsof -i :443
+  curl -I http://localhost         (doit repondre HTTP/1.1 200 OK)
+  curl -Ik https://localhost       (-k pour ignorer le certificat auto-signe)
+
+
+--------------------------------------------------------------------------------
+Q87 : Que fait la commande "apache2ctl configtest" ?
+--------------------------------------------------------------------------------
+R : Elle verifie la syntaxe de toute la configuration Apache sans redemarrer
+le serveur. Si tout est OK, elle affiche "Syntax OK". Sinon, elle indique
+le fichier et la ligne de l'erreur. C'est important de la lancer avant
+chaque redemarrage pour eviter de casser le serveur web.
+
+
+--------------------------------------------------------------------------------
+Q88 : Comment voir les logs en temps reel ?
+--------------------------------------------------------------------------------
+R :
+  Apache :   sudo tail -f /var/log/apache2/error.log
+             sudo tail -f /var/log/apache2/access.log
+  DNS :      sudo tail -f /var/log/syslog | grep named
+  Mail :     sudo tail -f /var/log/mail.log
+  PostgreSQL : sudo tail -f /var/log/postgresql/postgresql-*-main.log
+  Systeme :  sudo tail -f /var/log/syslog
+  SSH :      sudo tail -f /var/log/auth.log
+
+  La commande "tail -f" affiche les nouvelles lignes en continu.
+  Ctrl+C pour arreter.
+
+
+--------------------------------------------------------------------------------
+Q89 : Qu'est-ce que le fichier /etc/resolv.conf ?
+--------------------------------------------------------------------------------
+R : /etc/resolv.conf est le fichier de configuration du resolveur DNS du
+systeme. Il indique a quelle adresse envoyer les requetes DNS.
+
+  nameserver 192.168.1.1    -> Utiliser notre serveur DNS
+  nameserver 8.8.8.8        -> Utiliser Google DNS en backup
+  search exemple.com        -> Suffixe de recherche par defaut
+
+Attention : sur les systemes modernes, ce fichier est souvent gere par
+systemd-resolved ou NetworkManager. Les modifications manuelles peuvent
+etre ecrasees au redemarrage.
+
+
+--------------------------------------------------------------------------------
+Q90 : Quelle est la difference entre "systemctl restart" et "systemctl reload" ?
+--------------------------------------------------------------------------------
+R :
+  restart : Arrete le service puis le redemarre. Il y a une courte
+            interruption de service. Necessaire pour certains changements
+            majeurs de configuration.
+
+  reload  : Recharge la configuration sans arreter le service. Pas
+            d'interruption. Le service relit ses fichiers de configuration.
+            Ne fonctionne pas avec tous les services.
+
+Pour Apache : "reload" suffit pour les changements de VirtualHost.
+"restart" est necessaire pour les changements de modules ou de ports.
+
+
+================================================================================
+  FIN DU FICHIER QUESTIONS/REPONSES
+  Total : 90 questions couvrant toutes les parties de la SAE 203
+================================================================================

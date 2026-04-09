@@ -1,0 +1,212 @@
+=====================================================
+  TDL - SAE 203 - Installation de Services Reseaux
+=====================================================
+
+==============================
+ PHASE 1 : MACHINES VIRTUELLES
+==============================
+
+[ ] 1.1  Telecharger/recuperer l'image ISO (Support Cours\BUT\SAER203)
+[ ] 1.2  Installer VirtualBox sur le poste de travail
+[ ] 1.3  Creer la VM SERVEUR
+    [ ] 1.3.1  Configurer la VM (RAM, CPU, disque, reseau)
+    [ ] 1.3.2  Choisir le mode reseau (Bridge ou Host-Only)
+    [ ] 1.3.3  Installer Ubuntu/Debian depuis l'ISO
+    [ ] 1.3.4  Configurer le reseau (IP statique)
+    [ ] 1.3.5  Mettre a jour le systeme (apt update && apt upgrade)
+    [ ] 1.3.6  Installer le package aptitude
+[ ] 1.4  Creer la VM CLIENT
+    [ ] 1.4.1  Configurer la VM (RAM, CPU, disque, reseau)
+    [ ] 1.4.2  Installer Ubuntu/Debian depuis l'ISO
+    [ ] 1.4.3  Configurer le reseau
+    [ ] 1.4.4  Mettre a jour le systeme
+    [ ] 1.4.5  Installer aptitude
+[ ] 1.5  Verifier la connectivite entre les deux VM (ping)
+[ ] 1.6  Documenter les parametres VirtualBox et justifier les choix
+
+=================================
+ PHASE 2 : SERVICE WEB (APACHE2)
+=================================
+
+[ ] 2.1  Installer apache2 sur le SERVEUR
+         -> aptitude install apache2
+[ ] 2.2  Creer le compte utilisateur "exemple"
+         -> adduser exemple
+[ ] 2.3  Creer l'arborescence /users/firms/exemple/www/
+[ ] 2.4  Configurer le VirtualHost pour www.exemple.com
+    [ ] 2.4.1  Creer le fichier de conf dans /etc/apache2/sites-available/
+    [ ] 2.4.2  Pointer DocumentRoot vers /users/firms/exemple/www/
+    [ ] 2.4.3  Activer le site (a2ensite)
+    [ ] 2.4.4  Creer une page index.html de test
+    [ ] 2.4.5  Recharger apache2 (systemctl reload apache2)
+[ ] 2.5  Configurer HTTPS (certificat auto-signe)
+    [ ] 2.5.1  Activer le module SSL (a2enmod ssl)
+    [ ] 2.5.2  Generer le certificat auto-signe (openssl)
+    [ ] 2.5.3  Configurer le VirtualHost SSL (port 443)
+    [ ] 2.5.4  Recharger apache2
+    [ ] 2.5.5  Tester l'acces HTTPS depuis le CLIENT
+[ ] 2.6  Configurer les domaines supplementaires
+    [ ] 2.6.1  Creer le VirtualHost pour www.exemple1.fr
+    [ ] 2.6.2  Creer le VirtualHost pour www.exemple2.eu
+    [ ] 2.6.3  Creer une page par defaut pour chaque domaine
+    [ ] 2.6.4  Configurer HTTPS pour chaque domaine
+    [ ] 2.6.5  Tester chaque domaine depuis le CLIENT
+
+==============================
+ PHASE 3 : SERVICE DNS (BIND9)
+==============================
+
+[ ] 3.1  Installer bind9 sur le SERVEUR
+         -> aptitude install bind9 bind9utils
+[ ] 3.2  Configurer la zone principale exemple.com
+    [ ] 3.2.1  Creer le fichier de zone dans /etc/bind/
+    [ ] 3.2.2  Ajouter les enregistrements SOA, NS, A, MX
+    [ ] 3.2.3  Declarer la zone dans named.conf.local
+[ ] 3.3  Configurer la zone exemple1.fr
+    [ ] 3.3.1  Creer le fichier de zone
+    [ ] 3.3.2  Ajouter les enregistrements SOA, NS, A, MX
+    [ ] 3.3.3  Declarer la zone
+[ ] 3.4  Configurer la zone exemple2.eu
+    [ ] 3.4.1  Creer le fichier de zone
+    [ ] 3.4.2  Ajouter les enregistrements SOA, NS, A, MX
+    [ ] 3.4.3  Declarer la zone
+[ ] 3.5  Configurer la zone inverse (PTR)
+[ ] 3.6  Redemarrer bind9 et verifier (named-checkconf, named-checkzone)
+[ ] 3.7  Configurer le CLIENT pour utiliser le DNS du SERVEUR
+         -> modifier /etc/resolv.conf
+[ ] 3.8  Tester la resolution DNS depuis le CLIENT
+         -> nslookup www.exemple.com
+         -> nslookup www.exemple1.fr
+         -> nslookup www.exemple2.eu
+
+==========================
+ PHASE 4 : SGBD (MySQL)
+==========================
+
+[ ] 4.1  Installer MySQL (ou PostgreSQL) sur le SERVEUR
+         -> aptitude install mysql-server
+[ ] 4.2  Securiser l'installation (mysql_secure_installation)
+[ ] 4.3  Creer l'utilisateur "exemple" avec mot de passe "but1"
+         -> CREATE USER 'exemple'@'localhost' IDENTIFIED BY 'but1';
+[ ] 4.4  Creer une base de donnees pour le projet
+         -> CREATE DATABASE carte_grise;
+         -> GRANT ALL PRIVILEGES ON carte_grise.* TO 'exemple'@'localhost';
+[ ] 4.5  Installer phpMyAdmin (ou phpPgAdmin)
+         -> aptitude install phpmyadmin
+[ ] 4.6  Configurer phpMyAdmin pour fonctionner avec Apache
+[ ] 4.7  Tester l'acces a phpMyAdmin depuis le CLIENT via navigateur
+
+================================
+ PHASE 5 : PHP ET APPLICATION
+================================
+
+[ ] 5.1  Installer PHP sur le SERVEUR
+         -> aptitude install php libapache2-mod-php php-mysql
+[ ] 5.2  Creer un fichier index.php de test sous www.exemple.com
+         -> <?php phpinfo(); ?>
+[ ] 5.3  Verifier le fonctionnement via le CLIENT
+[ ] 5.4  Creer la base de donnees carte grise
+    [ ] 5.4.1  Concevoir le schema (tables proprietaires, vehicules, etc.)
+    [ ] 5.4.2  Creer les tables en SQL
+    [ ] 5.4.3  Inserer des donnees de test
+[ ] 5.5  Developper l'application PHP
+    [ ] 5.5.1  Formulaire HTML de connexion a la BDD
+    [ ] 5.5.2  Page de visualisation des donnees (SELECT)
+    [ ] 5.5.3  Page d'ajout de donnees (INSERT)
+    [ ] 5.5.4  Page de mise a jour (UPDATE)
+    [ ] 5.5.5  Page de suppression (DELETE)
+    [ ] 5.5.6  Fonctionnalite d'upload de fichiers
+[ ] 5.6  Tester toutes les operations CRUD depuis le CLIENT
+
+===============================
+ PHASE 6 : SERVICE MAIL
+===============================
+
+[ ] 6.1  Installer le serveur mail sur le SERVEUR
+         -> aptitude install postfix dovecot-imapd
+[ ] 6.2  Configurer Postfix (SMTP)
+    [ ] 6.2.1  Configurer pour les domaines exemple.com, exemple1.fr, exemple2.eu
+    [ ] 6.2.2  Configurer les alias et boites mail
+[ ] 6.3  Configurer Dovecot (IMAP)
+[ ] 6.4  Creer les boites mail
+    [ ] 6.4.1  contact@exemple.com
+    [ ] 6.4.2  contact@exemple1.fr
+    [ ] 6.4.3  contact@exemple2.eu
+[ ] 6.5  Sur le CLIENT : installer Thunderbird
+[ ] 6.6  Configurer les comptes mail dans Thunderbird
+[ ] 6.7  Tester l'envoi et la reception entre les boites mail
+
+==========================================
+ PHASE 7 : ENVOI AUTOMATIQUE DE MAILS
+==========================================
+
+[ ] 7.1  Creer un script PHP d'envoi de mails automatiques
+         -> Verifier les vehicules dont le controle technique approche
+[ ] 7.2  Creer un formulaire HTML pour programmer l'heure d'envoi
+[ ] 7.3  Configurer un cron job pour l'envoi automatique
+         -> crontab -e : 0 3 * * * php /chemin/vers/script_mail.php
+[ ] 7.4  Tester l'envoi automatique
+
+=============================================
+ PHASE 8 : OUTILS CLIENT + SFTP/SSL
+=============================================
+
+[ ] 8.1  Installer les outils sur le CLIENT
+    [ ] 8.1.1  Firefox (navigateur)
+    [ ] 8.1.2  Filezilla (client SFTP)
+    [ ] 8.1.3  Thunderbird (client mail)
+[ ] 8.2  Configurer SFTP sur le SERVEUR
+         -> aptitude install openssh-server
+[ ] 8.3  Tester la connexion SFTP depuis Filezilla
+[ ] 8.4  Verifier le fonctionnement SSL sur tous les domaines
+
+==============================================
+ PHASE 9 (BONUS) : AUTOMATISATION DOMAINES
+==============================================
+
+[ ] 9.1  Creer un script d'automatisation pour ajouter un nouveau domaine
+    [ ] 9.1.1  Creation automatique du VirtualHost Apache + SSL
+    [ ] 9.1.2  Ajout automatique de la zone DNS dans Bind9
+    [ ] 9.1.3  Creation automatique de la boite mail
+    [ ] 9.1.4  Creation automatique de la base de donnees
+    [ ] 9.1.5  Configuration SFTP pour le nouveau domaine
+[ ] 9.2  Tester le script avec un nouveau domaine
+
+==============================
+ PHASE 10 : RAPPORT (~15 pages)
+==============================
+
+[ ] 10.1  Rediger l'introduction (contexte + objectifs)
+[ ] 10.2  Rediger le cahier des charges
+    [ ] 10.2.1  Planning des taches
+    [ ] 10.2.2  Repartition du travail par membre
+[ ] 10.3  Rediger la partie technique
+    [ ] 10.3.1  Etude de l'existant (comparaison des technologies)
+    [ ] 10.3.2  Details des installations et configurations
+    [ ] 10.3.3  Schemas et figures (numerotes et titres)
+[ ] 10.4  Rediger le bilan
+    [ ] 10.4.1  Recapitulatif par rapport au planning
+    [ ] 10.4.2  Taches terminees / restantes
+    [ ] 10.4.3  Ameliorations et perspectives
+[ ] 10.5  Rediger la conclusion
+[ ] 10.6  Creer le sommaire avec numeros de page
+[ ] 10.7  Numeroter les pages
+[ ] 10.8  Ajouter les annexes (code commente, fiches techniques)
+[ ] 10.9  Glossaire des abreviations (VM, DNS, SGBD, etc.)
+[ ] 10.10 Relecture finale du rapport
+
+==============================
+ PHASE 11 : DEMONSTRATION
+==============================
+
+[ ] 11.1  Preparer la demo sur le PC serveur
+[ ] 11.2  Preparer la demo sur le PC client
+[ ] 11.3  Verifier que tous les services fonctionnent
+    [ ] 11.3.1  Apache + HTTPS sur tous les domaines
+    [ ] 11.3.2  DNS (resolution de tous les noms)
+    [ ] 11.3.3  Base de donnees + phpMyAdmin
+    [ ] 11.3.4  Application PHP (CRUD complet)
+    [ ] 11.3.5  Service mail (envoi/reception)
+    [ ] 11.3.6  SFTP via Filezilla
+    [ ] 11.3.7  Envoi automatique de mails (cron)
+[ ] 11.4  S'assurer que chaque membre peut repondre aux questions
